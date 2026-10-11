@@ -1,0 +1,721 @@
+const STORAGE_KEY = 'pocket-finance-profile-v1';
+const INVESTMENTS = [
+  { id: 'cash', name: 'Savings / cash', defaults: [4, 4, 4, 4] },
+  { id: 'rsu', name: 'RSUs', defaults: [10, 9, 8, 7] },
+  { id: 'largeCap', name: 'Large cap', defaults: [10, 9, 8, 7], historicalAverage: 15.33, historicalLabel: 'Nifty 50 TR rolling 5-year mean, 1999–2024', historicalSource: 'https://www.niftyindices.com/docs/default-source/indices/nifty-50/nifty-50-whitepaper-2024.pdf?sfvrsn=1cd6e35_4' },
+  { id: 'midCap', name: 'Mid cap', defaults: [11, 9, 8, 7], historicalAverage: 14.4, historicalLabel: 'Nifty Midcap 150 rolling 5-year mean, through Aug 2021', historicalSource: 'https://www.niftyindices.com/docs/default-source/indices/nifty-midcap-150/nifty-midcap-150-whitepaper_2021.pdf?sfvrsn=15d66e35_4' },
+  { id: 'smallCap', name: 'Small cap', defaults: [12, 9, 8, 7] },
+  { id: 'flexiCap', name: 'Flexi cap', defaults: [10, 9, 8, 7] },
+  { id: 'nps', name: 'NPS', defaults: [8, 7.5, 7, 6.5] },
+  { id: 'epf', name: 'EPF', defaults: [8.25, 7, 7, 7] },
+  { id: 'ppf', name: 'PPF', defaults: [7.1, 7, 7, 7] },
+  { id: 'fd', name: 'Fixed deposit', defaults: [6.5, 6, 6, 6] },
+  { id: 'other', name: 'Other investments', defaults: [7, 7, 7, 7] }
+];
+const DEPENDENT_EXPENSES = {
+  Child: [
+    { id: 'food', label: 'Food and daily needs' }, { id: 'schooling', label: 'School tuition and fees' }, { id: 'clothing', label: 'Clothing' },
+    { id: 'childcare', label: 'Childcare' }, { id: 'healthcare', label: 'Healthcare' },
+    { id: 'transport', label: 'Transport' }, { id: 'activities', label: 'Activities and hobbies' }, { id: 'other', label: 'Other costs' }
+  ],
+  Parent: [
+    { id: 'household', label: 'Living support' }, { id: 'medical', label: 'Medical expenses' },
+    { id: 'insurance', label: 'Insurance and care' }, { id: 'transport', label: 'Transport' }, { id: 'other', label: 'Other costs' }
+  ],
+  Sibling: [
+    { id: 'education', label: 'Education' }, { id: 'household', label: 'Living support' },
+    { id: 'healthcare', label: 'Healthcare' }, { id: 'transport', label: 'Transport' }, { id: 'other', label: 'Other costs' }
+  ],
+  Other: [
+    { id: 'household', label: 'Living support' }, { id: 'education', label: 'Education or training' },
+    { id: 'healthcare', label: 'Healthcare' }, { id: 'transport', label: 'Transport' }, { id: 'other', label: 'Other costs' }
+  ]
+};
+const DEPENDENT_RELATIONS = Object.keys(DEPENDENT_EXPENSES);
+const DEPENDENT_END_AGE = { Child: 18, Parent: 120, Sibling: 25, Other: 120 };
+const MARITAL_STATUSES = ['Single', 'Married', 'Partnered', 'Divorced', 'Widowed'];
+let currencyCode = 'INR';
+let currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: currencyCode, maximumFractionDigits: 0 });
+let currencySymbol = '₹';
+const SETTINGS_KEY = 'pocket-finance-settings-v1';
+let appSettings = { profileName: 'My finances', currency: 'INR', horizon: 20, theme: 'light' };
+let financialChart;
+let chartLoadStarted = false;
+
+function loadAppSettings() {
+  try { appSettings = { ...appSettings, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch (error) { console.warn('Display settings could not be read.', error); }
+  if (!['INR', 'USD', 'EUR', 'GBP'].includes(appSettings.currency)) appSettings.currency = 'INR';
+  if (![5, 10, 15, 20, 25].includes(Number(appSettings.horizon))) appSettings.horizon = 20;
+  if (!['light', 'dark'].includes(appSettings.theme)) appSettings.theme = 'light';
+  if (typeof appSettings.profileName !== 'string') appSettings.profileName = 'My finances';
+  currencyCode = ['INR', 'USD', 'EUR', 'GBP'].includes(appSettings.currency) ? appSettings.currency : 'INR';
+  const locale = currencyCode === 'INR' ? 'en-IN' : 'en-US';
+  currency = new Intl.NumberFormat(locale, { style: 'currency', currency: currencyCode, maximumFractionDigits: 0 });
+  currencySymbol = ({ INR: String.fromCharCode(8377), USD: '$', EUR: String.fromCharCode(8364), GBP: String.fromCharCode(163) })[currencyCode];
+  document.querySelectorAll('.currency-input > span:first-child').forEach(symbol => { symbol.textContent = currencySymbol; });
+  document.body.dataset.theme = appSettings.theme === 'dark' ? 'dark' : 'light';
+}
+
+function buildProfileTools() {
+  const tools = document.createElement('div');
+  tools.innerHTML = `<section class="panel risk-panel" id="risk-assessment"><div class="panel-heading"><div><p class="eyebrow">PORTFOLIO MIX</p><h2>Risk snapshot</h2></div><span class="horizon-badge">Allocation based</span></div><p class="panel-description">An indicative score based on the mix of balances entered; it does not assess personal risk tolerance.</p><div id="risk-summary" class="risk-summary"><p class="education-empty">Add investment balances to see a portfolio mix snapshot.</p></div></section>
+    <details class="panel settings-panel" id="profile-settings"><summary><span><strong>Profile & display settings</strong><small>Manage this browser profile, currency, projection horizon, and color theme.</small></span><span class="settings-toggle">Edit settings</span></summary><div class="settings-grid"><label class="field"><span>Profile name</span><div class="input-wrap"><input id="profile-name" maxlength="40"></div></label><label class="field"><span>Currency format</span><div class="input-wrap"><select id="currency-setting"><option value="INR">Indian rupee (INR)</option><option value="USD">US dollar (USD)</option><option value="EUR">Euro (EUR)</option><option value="GBP">Pound sterling (GBP)</option></select></div><small class="settings-hint">Changes display only; amounts are not converted.</small></label><label class="field"><span>Projection horizon</span><div class="input-wrap"><select id="horizon-setting"><option value="5">5 years</option><option value="10">10 years</option><option value="15">15 years</option><option value="20">20 years</option><option value="25">25 years</option></select></div></label><label class="field"><span>Color theme</span><div class="input-wrap"><select id="theme-setting"><option value="light">Light</option><option value="dark">Dark</option></select></div></label></div><div class="profile-tools"><button type="button" id="export-profile" class="add-loan-button">Download profile backup</button><label class="add-loan-button import-profile">Import backup<input id="import-profile" type="file" accept="application/json,.json"></label><button type="button" id="reset-profile" class="remove-loan-button">Clear this profile</button></div><p id="settings-status" class="settings-status" role="status">Financial data is stored in this browser unless you download a backup.</p></details>`;
+  document.querySelector('.content-grid').after(...tools.children);
+  document.getElementById('profile-name').value = appSettings.profileName;
+  document.getElementById('currency-setting').value = appSettings.currency;
+  document.getElementById('horizon-setting').value = String(appSettings.horizon);
+  document.getElementById('theme-setting').value = appSettings.theme;
+  const saveSettings = () => {
+    appSettings = { profileName: document.getElementById('profile-name').value.trim() || 'My finances', currency: document.getElementById('currency-setting').value, horizon: Number(document.getElementById('horizon-setting').value), theme: document.getElementById('theme-setting').value };
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(appSettings));
+    loadAppSettings();
+    document.querySelector('.sidebar-footer strong').textContent = appSettings.profileName;
+    document.querySelector('.sidebar-footer .avatar').textContent = appSettings.profileName.slice(0, 1).toUpperCase();
+    renderDashboard(loadUserData());
+    setText('settings-status', 'Settings saved on this device.');
+  };
+  ['profile-name', 'currency-setting', 'horizon-setting', 'theme-setting'].forEach(id => document.getElementById(id).addEventListener('change', saveSettings));
+  document.getElementById('export-profile').addEventListener('click', () => {
+    const profile = loadUserData();
+    if (!profile) { setText('settings-status', 'Save your financial profile before downloading a backup.'); return; }
+    const backup = { format: 'pocket-finance-backup-v1', profile, settings: appSettings };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'pocket-finance-backup.json'; link.click(); URL.revokeObjectURL(url);
+  });
+  document.getElementById('import-profile').addEventListener('change', async event => {
+    try {
+      const backup = JSON.parse(await event.target.files[0].text());
+      if (backup.format !== 'pocket-finance-backup-v1' || !backup.profile || !backup.profile.investments) throw new Error('This file is not a valid Pocket backup.');
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(backup.profile));
+      if (backup.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(backup.settings));
+      location.reload();
+    } catch (error) { setText('settings-status', error.message || 'Could not import this backup.'); }
+  });
+  document.getElementById('reset-profile').addEventListener('click', () => {
+    if (!confirm('Clear the financial data and display settings saved in this browser? Download a backup first if you may need it.')) return;
+    localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(SETTINGS_KEY); location.reload();
+  });
+}
+
+function loadUserData() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!saved || typeof saved !== 'object') return null;
+    const data = { age: '', maritalStatus: 'Single', inflation: '', retirementAge: 60, retirementExpenses: 0, retirementEndAge: 90, dependents: [], salary: '', expenses: '', rsuAnnual: 0, investments: {}, loans: [], ...saved };
+    if (!MARITAL_STATUSES.includes(data.maritalStatus)) data.maritalStatus = 'Single';
+    if (!Array.isArray(data.dependents)) data.dependents = [];
+    data.dependents = data.dependents.map(dependent => {
+      const normalized = typeof dependent === 'number' ? { age: dependent } : dependent;
+      const legacySpouse = normalized.relation === 'Spouse / partner';
+      const relation = legacySpouse ? 'Other' : DEPENDENT_RELATIONS.includes(normalized.relation) ? normalized.relation : 'Child';
+      const endAge = Number(normalized.endAge ?? DEPENDENT_END_AGE[relation]);
+      const categories = DEPENDENT_EXPENSES[relation];
+      const expenseDetails = legacySpouse
+        ? { other: Number(normalized.monthlyCost) || Object.values(normalized.expenseDetails || {}).reduce((sum, value) => sum + (Number(value) || 0), 0) }
+        : normalized.expenseDetails && typeof normalized.expenseDetails === 'object'
+          ? normalized.expenseDetails
+          : { [categories[categories.length - 1].id]: Number(normalized.monthlyCost) || 0 };
+      const monthlyCost = categories.reduce((sum, category) => sum + (Number(expenseDetails[category.id]) || 0), 0);
+      return {
+        monthlyCost: 0, endAge, educationTargetAge: 18, educationCostToday: 0,
+        educationFund: 0, educationMonthly: 0, educationReturn: 7, educationInflation: 8,
+        ...normalized, relation, expenseDetails, monthlyCost
+      };
+    });
+    if (!Array.isArray(data.loans)) data.loans = [];
+    if (!data.loans.length && Number(saved.debt) > 0) data.loans.push({ type: 'Other', balance: Number(saved.debt), emi: 0, rate: 0, months: 0 });
+    if (!Object.keys(data.investments || {}).length) {
+      data.investments = Object.fromEntries(INVESTMENTS.map(item => [item.id, { balance: 0, monthly: 0, returns: [...item.defaults] }]));
+      data.investments.cash.balance = Number(saved.savings) || 0;
+      data.investments.other.balance = Number(saved.investments) || 0;
+      data.salary = Number(saved.income) || 0;
+      // Previous version stored gross expenses without investments/EMIs.
+    }
+    data.investments = Object.fromEntries(INVESTMENTS.map(item => {
+      const investment = data.investments[item.id] || {};
+      return [item.id, {
+        balance: Number(investment.balance) || 0,
+        monthly: Number(investment.monthly) || 0,
+        returns: [0, 1, 2, 3].map(index => Number(investment.returns?.[index] ?? item.defaults[index]))
+      }];
+    }));
+    return data;
+  } catch (error) {
+    console.warn('Saved finance data could not be read.', error);
+    return null;
+  }
+}
+
+function readForm() {
+  const investments = {};
+  for (const category of INVESTMENTS) {
+    const row = document.querySelector(`[data-investment="${category.id}"]`);
+    investments[category.id] = {
+      balance: Number(row.querySelector('[data-field="balance"]').value),
+      monthly: Number(row.querySelector('[data-field="monthly"]').value),
+      returns: [1, 2, 3, 4].map(period => Number(row.querySelector(`[data-return="${period}"]`).value))
+    };
+  }
+  const loans = [...document.querySelectorAll('.loan-card')].map(card => ({
+    type: card.querySelector('[data-loan="type"]').value,
+    balance: Number(card.querySelector('[data-loan="balance"]').value),
+    emi: Number(card.querySelector('[data-loan="emi"]').value),
+    rate: Number(card.querySelector('[data-loan="rate"]').value),
+    months: Number(card.querySelector('[data-loan="months"]').value),
+    startDate: card.querySelector('[data-loan="startDate"]').value
+  }));
+  return {
+    age: Number(document.getElementById('age').value),
+    maritalStatus: document.getElementById('marital-status').value,
+    inflation: Number(document.getElementById('inflation').value),
+    retirementAge: Number(document.getElementById('retirement-age').value),
+    retirementExpenses: Number(document.getElementById('retirement-expenses').value),
+    retirementEndAge: Number(document.getElementById('retirement-end-age').value),
+    dependents: [...document.querySelectorAll('.dependent-card')].map(row => {
+      const expenseDetails = Object.fromEntries([...row.querySelectorAll('[data-dependent-expense]')].map(input => [input.dataset.dependentExpense, Number(input.value) || 0]));
+      return {
+        relation: row.querySelector('[data-dependent="relation"]').value,
+        age: Number(row.querySelector('[data-dependent="age"]').value),
+        monthlyCost: Object.values(expenseDetails).reduce((sum, value) => sum + value, 0),
+        expenseDetails,
+        endAge: Number(row.querySelector('[data-dependent="endAge"]').value),
+        educationTargetAge: Number(row.querySelector('[data-dependent="targetAge"]').value),
+        educationCostToday: Number(row.querySelector('[data-dependent="goalCost"]').value),
+        educationFund: Number(row.querySelector('[data-dependent="fund"]').value),
+        educationMonthly: Number(row.querySelector('[data-dependent="educationMonthly"]').value),
+        educationReturn: Number(row.querySelector('[data-dependent="return"]').value),
+        educationInflation: Number(row.querySelector('[data-dependent="educationInflation"]').value)
+      };
+    }),
+    salary: Number(document.getElementById('income').value),
+    expenses: Number(document.getElementById('expenses').value),
+    rsuAnnual: Number(document.getElementById('rsu-income').value),
+    investments, loans
+  };
+}
+
+function calculateFinances(data) {
+  if (!data) return null;
+  const investmentAssets = INVESTMENTS.reduce((sum, item) => sum + (data.investments[item.id]?.balance || 0), 0);
+  const educationAssets = data.dependents.reduce((sum, dependent) => sum + dependent.educationFund, 0);
+  const assetTotal = investmentAssets + educationAssets;
+  const rsuMonthlyVest = data.rsuAnnual / 12;
+  const educationMonthly = data.dependents.reduce((sum, dependent) => sum + (dependent.educationTargetAge > dependent.age ? dependent.educationMonthly : 0), 0);
+  const monthlyInvestments = INVESTMENTS.reduce((sum, item) => sum + (data.investments[item.id]?.monthly || 0), 0) + rsuMonthlyVest + educationMonthly;
+  const debt = data.loans.reduce((sum, loan) => sum + loan.balance, 0);
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const monthlyEmis = data.loans.reduce((sum, loan) => sum + (loan.startDate && loan.startDate > todayKey ? 0 : loan.emi), 0);
+  const monthlyIncome = data.salary + data.rsuAnnual / 12;
+  const dependentMonthlyCost = data.dependents.reduce((sum, dependent) => sum + (dependent.age < dependent.endAge ? dependent.monthlyCost : 0), 0);
+  const surplus = monthlyIncome - data.expenses - dependentMonthlyCost - monthlyEmis - monthlyInvestments;
+  const cash = data.investments.cash?.balance || 0;
+  return {
+    assets: assetTotal, debt, monthlyEmis, monthlyInvestments, dependentMonthlyCost,
+    netWorth: assetTotal - debt, surplus,
+    savingsRate: monthlyIncome > 0 ? ((monthlyIncome - data.expenses - dependentMonthlyCost - monthlyEmis) / monthlyIncome) * 100 : 0,
+    emergencyMonths: data.expenses + dependentMonthlyCost > 0 ? cash / (data.expenses + dependentMonthlyCost) : 0,
+    emergencyTarget: (data.expenses + dependentMonthlyCost) * 6
+  };
+}
+
+function emiForProjectionMonth(data, monthOffset) {
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth() + monthOffset, now.getDate());
+  const targetKey = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+  return data.loans.reduce((total, loan) => {
+    if (!loan.startDate || loan.startDate <= todayDateKey()) {
+      return monthOffset <= loan.months ? total + loan.emi : total;
+    }
+    if (targetKey < loan.startDate) return total;
+    const start = new Date(`${loan.startDate}T00:00:00`);
+    const elapsed = Math.max(0, (target.getFullYear() - start.getFullYear()) * 12 + target.getMonth() - start.getMonth());
+    return elapsed < loan.months ? total + loan.emi : total;
+  }, 0);
+}
+
+function todayDateKey() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+}
+
+function calculateLoanEmi(principal, annualRate, tenureMonths) {
+  if (principal <= 0 || tenureMonths <= 0) return 0;
+  const monthlyRate = annualRate / 100 / 12;
+  if (monthlyRate === 0) return principal / tenureMonths;
+  const growth = (1 + monthlyRate) ** tenureMonths;
+  return principal * monthlyRate * growth / (growth - 1);
+}
+
+function updateLoanEmi(card) {
+  const principal = Number(card.querySelector('[data-loan="balance"]').value) || 0;
+  const annualRate = Number(card.querySelector('[data-loan="rate"]').value) || 0;
+  const tenure = Number(card.querySelector('[data-loan="months"]').value) || 0;
+  const emi = calculateLoanEmi(principal, annualRate, tenure);
+  card.querySelector('[data-loan="emi"]').value = emi.toFixed(0);
+}
+
+function projection(data, horizon = 20) {
+  const summary = calculateFinances(data);
+  const balances = Object.fromEntries(INVESTMENTS.map(item => [item.id, data.investments[item.id].balance]));
+  const educationBalances = data.dependents.map(dependent => dependent.educationFund);
+  const periodCount = Math.ceil(horizon / 5);
+  const labels = ['Today'];
+  const nominal = [summary.assets];
+  const real = [summary.assets];
+  const blendRates = [];
+  for (let period = 0; period < periodCount; period += 1) {
+    const monthsInPeriod = Math.min(60, horizon * 12 - period * 60);
+    let periodWeighted = 0;
+    let periodWeight = 0;
+    for (const item of INVESTMENTS) {
+      const categoryMonthly = data.investments[item.id].monthly + (item.id === 'rsu' ? data.rsuAnnual / 12 : 0);
+      const weight = balances[item.id] + categoryMonthly * monthsInPeriod;
+      periodWeighted += weight * data.investments[item.id].returns[Math.min(3, period)];
+      periodWeight += weight;
+    }
+    data.dependents.forEach((dependent, index) => {
+      const monthsUntilGoal = Math.max(0, Math.round((dependent.educationTargetAge - dependent.age) * 12));
+      const contributionMonths = Math.max(0, Math.min(monthsInPeriod, monthsUntilGoal - period * 60));
+      const weight = educationBalances[index] + dependent.educationMonthly * contributionMonths;
+      periodWeighted += weight * dependent.educationReturn;
+      periodWeight += weight;
+    });
+    blendRates.push(periodWeight ? periodWeighted / periodWeight : 0);
+    for (let month = 0; month < monthsInPeriod; month += 1) {
+      const monthOffset = period * 60 + month + 1;
+      const dependentCost = data.dependents.reduce((sum, dependent) => {
+        const ageAtMonth = dependent.age + monthOffset / 12;
+        return ageAtMonth < dependent.endAge
+          ? sum + dependent.monthlyCost * (1 + data.inflation / 100) ** (monthOffset / 12)
+          : sum;
+      }, 0);
+      const monthlyIncome = data.salary + data.rsuAnnual / 12;
+      const scheduledEmis = emiForProjectionMonth(data, monthOffset);
+      const availableForInvesting = monthlyIncome - data.expenses - dependentCost - scheduledEmis;
+      const plannedEducation = data.dependents.reduce((sum, dependent) => sum + (monthOffset <= Math.max(0, Math.round((dependent.educationTargetAge - dependent.age) * 12)) ? dependent.educationMonthly : 0), 0);
+      const plannedMonthlyInvestments = INVESTMENTS.reduce((sum, item) => sum + data.investments[item.id].monthly, 0) + data.rsuAnnual / 12 + plannedEducation;
+      const investmentFactor = plannedMonthlyInvestments > 0
+        ? Math.min(1, Math.max(0, availableForInvesting) / plannedMonthlyInvestments)
+        : 0;
+      for (const item of INVESTMENTS) {
+        const investment = data.investments[item.id];
+        const rate = investment.returns[Math.min(3, period)] / 100;
+        const categoryMonthly = investment.monthly + (item.id === 'rsu' ? data.rsuAnnual / 12 : 0);
+        balances[item.id] = balances[item.id] * (1 + rate) ** (1 / 12) + categoryMonthly * investmentFactor;
+      }
+      data.dependents.forEach((dependent, index) => {
+        const monthsUntilGoal = Math.max(0, Math.round((dependent.educationTargetAge - dependent.age) * 12));
+        const educationMonthlyRate = dependent.educationReturn / 100 / 12;
+        const targetMonth = monthsUntilGoal === 0 ? 1 : monthsUntilGoal;
+        educationBalances[index] = educationBalances[index] * (1 + educationMonthlyRate) + (monthOffset <= monthsUntilGoal ? dependent.educationMonthly * investmentFactor : 0);
+        if (monthOffset === targetMonth && dependent.educationCostToday > 0) {
+          const goalCost = dependent.educationCostToday * (1 + dependent.educationInflation / 100) ** (monthsUntilGoal / 12);
+          educationBalances[index] = Math.max(0, educationBalances[index] - goalCost);
+        }
+      });
+      if (availableForInvesting > 0) {
+        balances.cash += Math.max(0, availableForInvesting - plannedMonthlyInvestments * investmentFactor);
+      } else {
+        let shortfall = -availableForInvesting;
+        for (const item of [INVESTMENTS[0], ...INVESTMENTS.slice(1)]) {
+          const withdrawal = Math.min(balances[item.id], shortfall);
+          balances[item.id] -= withdrawal;
+          shortfall -= withdrawal;
+          if (shortfall <= 0) break;
+        }
+        educationBalances.forEach((balance, index) => {
+          if (shortfall <= 0) return;
+          const withdrawal = Math.min(balance, shortfall);
+          educationBalances[index] -= withdrawal;
+          shortfall -= withdrawal;
+        });
+      }
+    }
+    const value = Object.values(balances).reduce((sum, balance) => sum + balance, 0) + educationBalances.reduce((sum, balance) => sum + balance, 0);
+    const year = Math.min(horizon, (period + 1) * 5);
+    labels.push(`Year ${year}`);
+    nominal.push(Math.round(value));
+    real.push(Math.round(value / ((1 + data.inflation / 100) ** year)));
+  }
+  return { labels, nominal, real, blendRates };
+}
+
+function setText(id, value) { document.getElementById(id).textContent = value; }
+
+function educationForecast(dependent) {
+  const years = Math.max(0, dependent.educationTargetAge - dependent.age);
+  const months = Math.round(years * 12);
+  const targetCost = dependent.educationCostToday * (1 + dependent.educationInflation / 100) ** years;
+  const monthlyRate = dependent.educationReturn / 100 / 12;
+  const growth = (1 + monthlyRate) ** months;
+  const annuityFactor = months === 0 ? 0 : monthlyRate === 0
+    ? months
+    : (growth - 1) / monthlyRate;
+  const projectedFund = dependent.educationFund * growth + dependent.educationMonthly * annuityFactor;
+  const amountToFund = Math.max(0, targetCost - dependent.educationFund * growth);
+  const requiredMonthly = annuityFactor > 0 ? amountToFund / annuityFactor : 0;
+  return {
+    years, targetCost, projectedFund,
+    shortfall: Math.max(0, targetCost - projectedFund),
+    requiredMonthly,
+    additionalMonthly: Math.max(0, requiredMonthly - dependent.educationMonthly)
+  };
+}
+
+function retirementForecast(data) {
+  const years = Math.max(0, data.retirementAge - data.age);
+  const retirementYears = Math.max(1, data.retirementEndAge - data.retirementAge);
+  const inflation = data.inflation / 100;
+  const assets = Object.fromEntries(INVESTMENTS.map(item => [item.id, data.investments[item.id].balance]));
+  const months = years * 12;
+  for (let month = 1; month <= months; month += 1) {
+    const period = Math.min(3, Math.floor((month - 1) / 60));
+    const monthOffset = month;
+    const dependentCost = data.dependents.reduce((sum, dependent) => {
+      const ageAtMonth = dependent.age + monthOffset / 12;
+      return ageAtMonth < dependent.endAge ? sum + dependent.monthlyCost * (1 + inflation) ** (monthOffset / 12) : sum;
+    }, 0);
+    const monthlyIncome = data.salary + data.rsuAnnual / 12;
+    const available = monthlyIncome - data.expenses * (1 + inflation) ** (monthOffset / 12) - dependentCost - emiForProjectionMonth(data, monthOffset);
+    const educationMonthly = data.dependents.reduce((sum, dependent) => monthOffset <= Math.max(0, Math.round((dependent.educationTargetAge - dependent.age) * 12)) ? sum + dependent.educationMonthly : sum, 0);
+    const generalMonthly = INVESTMENTS.reduce((sum, item) => sum + data.investments[item.id].monthly, 0) + data.rsuAnnual / 12;
+    const totalPlanned = generalMonthly + educationMonthly;
+    const factor = totalPlanned > 0 ? Math.min(1, Math.max(0, available) / totalPlanned) : 0;
+    for (const item of INVESTMENTS) {
+      const rate = data.investments[item.id].returns[period] / 100;
+      const monthly = data.investments[item.id].monthly + (item.id === 'rsu' ? data.rsuAnnual / 12 : 0);
+      assets[item.id] = assets[item.id] * (1 + rate) ** (1 / 12) + monthly * factor;
+    }
+    if (available > 0) assets.cash += Math.max(0, available - totalPlanned * factor);
+  }
+  const projectedCorpus = Object.values(assets).reduce((sum, value) => sum + value, 0);
+  const spendingAtRetirement = data.retirementExpenses * 12 * (1 + inflation) ** years;
+  const returnWeights = INVESTMENTS.map(item => ({
+    rate: data.investments[item.id].returns[0],
+    weight: data.investments[item.id].balance + data.investments[item.id].monthly * 60 + (item.id === 'rsu' ? data.rsuAnnual / 12 * 60 : 0)
+  }));
+  const returnWeightTotal = returnWeights.reduce((sum, item) => sum + item.weight, 0);
+  const blendedReturn = (returnWeightTotal
+    ? returnWeights.reduce((sum, item) => sum + item.rate * item.weight, 0) / returnWeightTotal
+    : 0) / 100;
+  const realReturn = (1 + blendedReturn) / (1 + inflation) - 1;
+  const annuityFactor = Math.abs(realReturn) < 0.000001
+    ? retirementYears
+    : (1 - (1 + realReturn) ** -retirementYears) / realReturn;
+  const targetCorpus = Math.max(0, spendingAtRetirement * annuityFactor);
+  const shortfall = Math.max(0, targetCorpus - projectedCorpus);
+  return { years, retirementYears, projectedCorpus, targetCorpus, shortfall, spendingAtRetirement };
+}
+
+function renderRetirementPlan(data) {
+  const container = document.getElementById('retirement-summary');
+  if (!data || !data.age || !data.retirementExpenses) {
+    container.innerHTML = '<p class="education-empty">Add your age and monthly retirement spending in Personal details to see an estimate.</p>';
+    return;
+  }
+  const result = retirementForecast(data);
+  const outcome = result.shortfall > 0
+    ? `Estimated gap: ${currency.format(result.shortfall)} at retirement.`
+    : 'Projected investments meet this spending target.';
+  container.innerHTML = `<div class="retirement-metrics"><div><small>Years to retirement</small><strong>${result.years}</strong></div><div><small>Projected investments</small><strong>${currency.format(result.projectedCorpus)}</strong></div><div><small>Estimated fund target</small><strong>${currency.format(result.targetCorpus)}</strong></div><div><small>Annual spending at retirement</small><strong>${currency.format(result.spendingAtRetirement)}</strong></div></div><p class="retirement-outcome ${result.shortfall <= 0 ? 'on-track' : ''}">${outcome}</p><p class="retirement-note">Target supports ${result.retirementYears} years of spending, adjusted for inflation and a simplified real return.</p>`;
+}
+
+function renderEducationPlans(data) {
+  const list = document.getElementById('education-summary-list');
+  if (!data.dependents.length) {
+    list.innerHTML = '<p class="education-empty">Add a dependent and education estimate in Personal details to see a plan.</p>';
+    return;
+  }
+  list.replaceChildren();
+  data.dependents.forEach((dependent, index) => {
+    const forecast = educationForecast(dependent);
+    const card = document.createElement('article');
+    card.className = 'education-summary-card';
+    if (dependent.educationCostToday <= 0) {
+      card.innerHTML = `<div class="education-summary-heading"><strong>Dependent ${index + 1}</strong><span>Age ${dependent.age}</span></div><p class="education-empty">Add an education cost estimate in Personal details to calculate this goal.</p>`;
+      list.append(card);
+      return;
+    }
+    const targetStatus = forecast.years === 0
+      ? `Target age reached. Current fund gap: ${currency.format(forecast.shortfall)}.`
+      : forecast.shortfall > 0
+        ? `Plan to add about ${currency.format(forecast.additionalMonthly)} per month to close the projected gap.`
+        : 'On track using the entered return and inflation assumptions.';
+    card.innerHTML = `<div class="education-summary-heading"><strong>Dependent ${index + 1}</strong><span>Age ${dependent.age} · target age ${dependent.educationTargetAge}</span></div>
+      <div class="education-metrics"><div><small>Estimated target cost</small><strong>${currency.format(forecast.targetCost)}</strong></div><div><small>Projected fund</small><strong>${currency.format(forecast.projectedFund)}</strong></div><div><small>Monthly saving needed</small><strong>${currency.format(forecast.requiredMonthly)}</strong></div><div><small>Current monthly saving</small><strong>${currency.format(dependent.educationMonthly)}</strong></div></div>
+      <div class="education-gap ${forecast.shortfall <= 0 ? 'on-track' : ''}"><span>${forecast.shortfall > 0 ? `Projected shortfall: ${currency.format(forecast.shortfall)}` : 'Projected goal covered'}</span><p>${targetStatus}</p><small>Assumes the entered monthly saving continues and the return and inflation assumptions hold.</small></div>`;
+    list.append(card);
+  });
+}
+
+function renderRiskSnapshot(data) {
+  const container = document.getElementById('risk-summary');
+  const riskRatings = { cash: 1, rsu: 9, largeCap: 7, midCap: 8, smallCap: 9, flexiCap: 7, nps: 5, epf: 2, ppf: 2, fd: 2, other: 5 };
+  const rows = INVESTMENTS.map(item => ({ name: item.name, balance: data.investments[item.id].balance, risk: riskRatings[item.id] }));
+  const total = rows.reduce((sum, item) => sum + item.balance, 0);
+  if (!total) {
+    container.innerHTML = '<p class="education-empty">Add investment balances to see a portfolio mix snapshot.</p>';
+    return;
+  }
+  const score = rows.reduce((sum, item) => sum + item.risk * item.balance, 0) / total;
+  const largest = rows.reduce((a, b) => a.balance > b.balance ? a : b);
+  const label = score < 3 ? 'Lower volatility mix' : score < 5 ? 'Moderate mix' : score < 7 ? 'Growth oriented mix' : 'Higher volatility mix';
+  const concentration = largest.balance / total;
+  container.innerHTML = `<div class="risk-score"><strong>${score.toFixed(1)}<small> / 10</small></strong><span>${label}</span></div><div class="risk-track" aria-label="Indicative risk score ${score.toFixed(1)} out of 10"><span style="width:${Math.min(100, score * 10)}%"></span></div><div class="risk-details"><span>Largest category</span><strong>${largest.name} · ${(concentration * 100).toFixed(0)}% of entered balances</strong></div><p class="retirement-note">This simple weighted score uses fixed category risk ratings. It is not a suitability assessment or a measure of future loss.</p>`;
+}
+
+function buildInvestmentTable(saved = {}) {
+  const wrap = document.getElementById('investment-table-wrap');
+  const table = document.createElement('table');
+  table.className = 'investment-table';
+  table.innerHTML = `<thead><tr><th>Category</th><th>Current balance</th><th>Monthly investment</th><th>Years 1–5</th><th>Years 6–10</th><th>Years 11–15</th><th>Years 16–20</th></tr></thead>`;
+  const body = table.createTBody();
+  for (const category of INVESTMENTS) {
+    const values = saved[category.id] || { balance: 0, monthly: 0, returns: category.defaults };
+    const row = body.insertRow();
+    row.dataset.investment = category.id;
+    const reference = category.historicalAverage
+      ? `<small class="historical-reference">5y rolling mean ${category.historicalAverage}% <a href="${category.historicalSource}" target="_blank" rel="noreferrer" aria-label="Source for ${category.name} historical reference">source</a></small>`
+      : '<small class="historical-reference">Editable planning assumption</small>';
+    row.innerHTML = `<th scope="row">${category.name}${reference}</th>
+      <td><label class="sr-only">${category.name} current balance</label><input data-field="balance" type="number" min="0" step="1000" value="${Number(values.balance) || 0}" aria-label="${category.name} current balance"></td>
+      <td><label class="sr-only">${category.name} monthly investment</label><input data-field="monthly" type="number" min="0" step="500" value="${Number(values.monthly) || 0}" aria-label="${category.name} monthly investment"></td>
+      ${[1, 2, 3, 4].map(index => `<td><label class="sr-only">${category.name} annual return in years ${(index - 1) * 5 + 1} to ${index * 5}</label><div class="return-input"><input data-return="${index}" type="number" min="-100" max="100" step="0.1" value="${Number(values.returns?.[index - 1] ?? category.defaults[index - 1])}" aria-label="${category.name} return period ${index}"><span>%</span></div></td>`).join('')}`;
+  }
+  wrap.replaceChildren(table);
+}
+
+function updateDependentExpenseFields(card) {
+  const currentValues = Object.fromEntries([...card.querySelectorAll('[data-dependent-expense]')].map(input => [input.dataset.dependentExpense, Number(input.value) || 0]));
+  card._expenseDetails = { ...card._expenseDetails, ...currentValues };
+  const relation = card.querySelector('[data-dependent="relation"]').value;
+  const categories = DEPENDENT_EXPENSES[relation] || DEPENDENT_EXPENSES.Other;
+  const fields = card.querySelector('.dependent-expense-grid');
+  fields.innerHTML = categories.map(category => `<label class="field"><span>${category.label} / month</span><div class="input-wrap currency-input"><span>${currencySymbol}</span><input type="number" min="0" step="500" data-dependent-expense="${category.id}" value="${Number(card._expenseDetails[category.id]) || 0}" aria-label="${category.label} monthly cost"></div></label>`).join('');
+  fields.querySelectorAll('[data-dependent-expense]').forEach(input => input.addEventListener('input', () => {
+    card._expenseDetails[input.dataset.dependentExpense] = Number(input.value) || 0;
+    card.querySelector('[data-dependent="cost-total"]').textContent = currency.format([...fields.querySelectorAll('[data-dependent-expense]')].reduce((sum, field) => sum + (Number(field.value) || 0), 0));
+  }));
+  const total = categories.reduce((sum, category) => sum + (Number(card._expenseDetails[category.id]) || 0), 0);
+  card.querySelector('[data-dependent="cost-total"]').textContent = currency.format(total);
+}
+
+function makeDependent(dependent = {}) {
+  if (typeof dependent === 'number') dependent = { age: dependent };
+  const row = document.createElement('div');
+  row.className = 'dependent-card';
+  const val = (key, fallback = 0) => Number(dependent[key] ?? fallback);
+  row._expenseDetails = { ...(dependent.expenseDetails || {}) };
+  row.innerHTML = `<div class="dependent-card-heading"><strong class="dependent-title">Dependent</strong><button type="button" class="remove-loan-button">Remove</button></div>
+    <label class="field"><span>Age</span><div class="input-wrap"><input type="number" data-dependent="age" min="0" max="120" step="1" placeholder="e.g. 8" value="${Number(dependent.age) || ''}" required><span>years</span></div></label>
+    <label class="field"><span>Relationship</span><div class="input-wrap"><select data-dependent="relation" aria-label="Dependent relationship">${DEPENDENT_RELATIONS.map(relation => `<option value="${relation}">${relation}</option>`).join('')}</select></div></label>
+    <label class="field"><span>Cost continues until age</span><div class="input-wrap"><input type="number" data-dependent="endAge" min="0" max="120" step="1" value="${val('endAge', DEPENDENT_END_AGE[dependent.relation] || 18)}" required><span>years</span></div></label>
+    <div class="dependent-education-heading dependent-expense-heading">Monthly expenses <small>Enter today's amounts. Categories change by relationship; education goal savings are separate.</small></div>
+    <div class="dependent-expense-grid"></div>
+    <div class="dependent-expense-total"><span>Total dependent cost / month</span><strong data-dependent="cost-total">${currency.format(0)}</strong></div>
+    <div class="dependent-education-heading">Education goal <small>Costs in today's rupees; use a dedicated fund not listed in general investments</small></div>
+    <label class="field"><span>Target age</span><div class="input-wrap"><input type="number" data-dependent="targetAge" min="0" max="120" step="1" value="${val('educationTargetAge', 18)}" required><span>years</span></div></label>
+    <label class="field"><span>Total education cost today</span><div class="input-wrap currency-input"><span>${currencySymbol}</span><input type="number" data-dependent="goalCost" min="0" step="10000" value="${val('educationCostToday')}" required></div></label>
+    <label class="field"><span>Current education fund</span><div class="input-wrap currency-input"><span>${currencySymbol}</span><input type="number" data-dependent="fund" min="0" step="1000" value="${val('educationFund')}" required></div></label>
+    <label class="field"><span>Monthly education saving</span><div class="input-wrap currency-input"><span>${currencySymbol}</span><input type="number" data-dependent="educationMonthly" min="0" step="500" value="${val('educationMonthly')}" required></div></label>
+    <label class="field"><span>Education return assumption</span><div class="input-wrap"><input type="number" data-dependent="return" min="-50" max="100" step="0.1" value="${val('educationReturn', 7)}" required><span>% / year</span></div></label>
+    <label class="field"><span>Education cost inflation</span><div class="input-wrap"><input type="number" data-dependent="educationInflation" min="0" max="50" step="0.1" value="${val('educationInflation', 8)}" required><span>% / year</span></div></label>`;
+  row.querySelector('[data-dependent="relation"]').value = DEPENDENT_RELATIONS.includes(dependent.relation) ? dependent.relation : 'Child';
+  let previousRelation = row.querySelector('[data-dependent="relation"]').value;
+  row.querySelector('[data-dependent="relation"]').addEventListener('change', event => {
+    const endAgeInput = row.querySelector('[data-dependent="endAge"]');
+    if (Number(endAgeInput.value) === DEPENDENT_END_AGE[previousRelation]) endAgeInput.value = DEPENDENT_END_AGE[event.target.value];
+    previousRelation = event.target.value;
+    updateDependentExpenseFields(row);
+    updateDependents();
+  });
+  updateDependentExpenseFields(row);
+  row.querySelector('button').addEventListener('click', () => { row.remove(); updateDependents(); });
+  document.getElementById('dependent-list').append(row);
+  updateDependents();
+}
+
+function updateDependents() {
+  const list = document.getElementById('dependent-list');
+  const rows = list.querySelectorAll('.dependent-card');
+  let empty = list.querySelector('.empty-loans');
+  if (!rows.length && !empty) {
+    empty = document.createElement('p'); empty.className = 'empty-loans'; empty.textContent = 'No dependents added.'; list.append(empty);
+  } else if (rows.length && empty) empty.remove();
+  rows.forEach((row, index) => { row.querySelector('.dependent-title').textContent = `Dependent ${index + 1} · ${row.querySelector('[data-dependent="relation"]').value}`; });
+}
+
+function makeLoanCard(loan = {}) {
+  const card = document.createElement('fieldset');
+  card.className = 'loan-card';
+  card.innerHTML = `<legend class="sr-only">Loan details</legend><div class="loan-card-top"><strong class="loan-card-title">Loan details</strong><button type="button" class="remove-loan-button">Remove</button></div>
+    <div class="form-grid loan-fields"><label class="field"><span>Loan type</span><select data-loan="type"><option>Home loan</option><option>Personal loan</option><option>Education loan</option><option>Vehicle loan</option><option>Credit card</option><option>Other</option></select></label>
+    <label class="field"><span>Outstanding balance</span><div class="input-wrap currency-input"><span>${currencySymbol}</span><input data-loan="balance" type="number" min="0" step="1000" required></div></label>
+    <label class="field"><span>Annual rate of interest (ROI)</span><div class="input-wrap"><input data-loan="rate" type="number" min="0" max="100" step="0.1" required><span>% / year</span></div></label>
+    <label class="field"><span>Tenure</span><div class="input-wrap"><input data-loan="months" type="number" min="1" max="600" step="1" required><span>months</span></div></label>
+    <label class="field"><span>Calculated monthly EMI</span><div class="input-wrap currency-input calculated-emi"><span>${currencySymbol}</span><input data-loan="emi" type="number" min="0" readonly aria-readonly="true" required></div></label>
+    <label class="field"><span>EMI start date</span><div class="input-wrap"><input data-loan="startDate" type="date" required></div></label></div>
+    <p class="loan-calc-note">EMI is calculated with a monthly reducing-balance formula.</p>`;
+  card.querySelector('[data-loan="type"]').value = loan.type || 'Home loan';
+  for (const key of ['balance', 'rate', 'months']) if (loan[key] !== undefined) card.querySelector(`[data-loan="${key}"]`).value = loan[key];
+  card.querySelector('[data-loan="startDate"]').value = loan.startDate || todayDateKey();
+  ['balance', 'rate', 'months'].forEach(key => card.querySelector(`[data-loan="${key}"]`).addEventListener('input', () => updateLoanEmi(card)));
+  updateLoanEmi(card);
+  card.querySelector('button').addEventListener('click', () => { card.remove(); updateLoanLabels(); });
+  document.getElementById('loan-list').append(card);
+  updateLoanLabels();
+}
+
+function updateLoanLabels() {
+  const list = document.getElementById('loan-list');
+  const cards = [...list.querySelectorAll('.loan-card')];
+  const empty = list.querySelector('.empty-loans');
+  if (!cards.length && !empty) { const p = document.createElement('p'); p.className = 'empty-loans'; p.textContent = 'No loans added. Add a loan to include its balance and EMI in your snapshot.'; list.append(p); }
+  else if (cards.length && empty) empty.remove();
+  cards.forEach((card, index) => { card.querySelector('.loan-card-title').textContent = `Loan ${index + 1}`; });
+}
+
+function renderChart(data) {
+  if (!data) return;
+  const horizon = Number(appSettings.horizon) || 20;
+  const values = projection(data, horizon);
+  setText('projection-total', currency.format(values.nominal.at(-1)));
+  const rates = values.blendRates.map((rate, index) => `Y${index * 5 + 1}–${index * 5 + 5}: ${rate.toFixed(1)}%`).join(' · ');
+  setText('blend-return-summary', `Blended annual assumptions: ${rates}`);
+  const canvas = document.getElementById('financial-chart');
+  document.querySelector('.chart-panel h2').textContent = `${horizon}-year investment projection`;
+  document.querySelector('.chart-summary .assumption').textContent = `Nominal value at year ${horizon}`;
+  document.querySelector('.chart-panel .horizon-badge').textContent = `${Math.ceil(horizon / 5)} × 5-year periods`;
+  if (!window.Chart) {
+    if (!chartLoadStarted) {
+      chartLoadStarted = true;
+      const loadChart = () => {
+        if (document.querySelector('script[data-lazy-chart]')) return;
+        const script = document.createElement('script');
+        script.dataset.lazyChart = 'true';
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.onload = () => renderChart(loadUserData());
+        script.onerror = () => setText('blend-return-summary', 'Chart library could not load; projection values are still available above.');
+        document.head.append(script);
+      };
+      if (!('IntersectionObserver' in window)) loadChart();
+      else {
+        const observer = new IntersectionObserver(entries => {
+        if (!entries.some(entry => entry.isIntersecting)) return;
+        observer.disconnect();
+        loadChart();
+        }, { rootMargin: '200px' });
+        observer.observe(canvas);
+      }
+    }
+    return;
+  }
+  if (financialChart) financialChart.destroy();
+  financialChart = new Chart(canvas, { type: 'line', data: { labels: values.labels, datasets: [
+    { label: 'Projected value', data: values.nominal, borderColor: '#2e8059', backgroundColor: 'rgba(46,128,89,.10)', fill: true, tension: .25, pointRadius: 3, borderWidth: 2 },
+    { label: 'In today\'s money', data: values.real, borderColor: '#b5cdbb', fill: false, tension: .25, pointRadius: 2, borderDash: [4, 4], borderWidth: 1.5 }
+  ] }, options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: true, position: 'bottom', align: 'start', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 6, boxHeight: 6, padding: 16, color: '#7f867e', font: { family: 'DM Sans', size: 9 } } }, tooltip: { callbacks: { label: context => `${context.dataset.label}: ${currency.format(context.raw)}` } } }, scales: { x: { grid: { display: false }, ticks: { color: '#989e96', font: { family: 'DM Sans', size: 9 } }, border: { display: false } }, y: { beginAtZero: true, grid: { color: '#f0f2ed' }, ticks: { maxTicksLimit: 4, color: '#989e96', font: { family: 'DM Sans', size: 9 }, callback: value => value >= 1000000 ? `${currencySymbol}${(value / 1000000).toFixed(1)}M` : `${currencySymbol}${Math.round(value / 1000)}k` }, border: { display: false } } } } });
+}
+
+function renderDashboard(data) {
+  const summary = calculateFinances(data);
+  if (!summary) return;
+  setText('net-worth', currency.format(summary.netWorth));
+  setText('monthly-surplus', currency.format(summary.surplus));
+  setText('savings-rate', `${Math.round(summary.savingsRate)}%`);
+  setText('assets-total', currency.format(summary.assets));
+  setText('debt-total', currency.format(summary.debt));
+  setText('dependent-cost-total', currency.format(summary.dependentMonthlyCost));
+  setText('emi-total', currency.format(summary.monthlyEmis));
+  setText('breakdown-net-worth', currency.format(summary.netWorth));
+  if (summary.emergencyTarget > 0) {
+    setText('emergency-fund', `${summary.emergencyMonths.toFixed(1)} months`);
+    setText('emergency-caption', `of ${currency.format(summary.emergencyTarget)} six-month target`);
+    document.getElementById('emergency-progress').style.width = `${Math.min(100, (data.investments.cash.balance / summary.emergencyTarget) * 100)}%`;
+  }
+  if (summary.surplus < 0) { setText('insight-title', 'Monthly outgoings exceed income'); setText('insight-copy', `Expenses, EMIs, and planned investments are ${currency.format(-summary.surplus)} above income.`); }
+  else { setText('insight-title', summary.emergencyMonths < 3 ? 'Build your safety cushion' : 'A solid cash cushion'); setText('insight-copy', `Savings cover about ${summary.emergencyMonths.toFixed(1)} months of expenses.`); }
+  renderChart(data);
+  renderRiskSnapshot(data);
+  renderRetirementPlan(data);
+  renderEducationPlans(data);
+}
+
+function showTab(tab) {
+  const personal = tab === 'personal';
+  document.getElementById('panel-personal').hidden = !personal;
+  document.getElementById('panel-income').hidden = personal;
+  document.getElementById('tab-personal').classList.toggle('active', personal);
+  document.getElementById('tab-income').classList.toggle('active', !personal);
+  document.getElementById('tab-personal').setAttribute('aria-selected', String(personal));
+  document.getElementById('tab-income').setAttribute('aria-selected', String(!personal));
+  document.getElementById('save-status').textContent = 'Your information is stored only in this browser.';
+}
+
+function validateTab(panel) {
+  const invalid = [...panel.querySelectorAll('input, select')].find(input => !input.disabled && !input.checkValidity());
+  if (invalid) { invalid.reportValidity(); invalid.focus(); return false; }
+  return true;
+}
+
+function saveUserData(event) {
+  event.preventDefault();
+  if (!validateTab(document.getElementById('panel-personal'))) { showTab('personal'); return; }
+  if (!validateTab(document.getElementById('panel-income'))) return;
+  const data = readForm();
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    renderDashboard(data);
+    setText('save-status', 'Saved. Your snapshot is stored in this browser.');
+  } catch (error) { console.error('Could not save financial data.', error); setText('save-status', 'Could not save. Check your browser storage settings.'); }
+}
+
+function populateForm(data) {
+  if (!data) return;
+  for (const [key, id] of Object.entries({ age: 'age', maritalStatus: 'marital-status', inflation: 'inflation', retirementAge: 'retirement-age', retirementExpenses: 'retirement-expenses', retirementEndAge: 'retirement-end-age', salary: 'income', expenses: 'expenses', rsuAnnual: 'rsu-income' })) {
+    if (data[key] !== undefined && data[key] !== '') document.getElementById(id).value = data[key];
+  }
+  data.dependents.forEach(dependent => makeDependent(dependent));
+  buildInvestmentTable(data.investments);
+  data.loans.forEach(loan => makeLoanCard(loan));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadAppSettings();
+  buildProfileTools();
+  document.querySelector('.sidebar-footer strong').textContent = appSettings.profileName;
+  document.querySelector('.sidebar-footer .avatar').textContent = appSettings.profileName.slice(0, 1).toUpperCase();
+  const data = loadUserData();
+  buildInvestmentTable(data?.investments || {});
+  populateForm(data);
+  renderDashboard(data);
+  document.getElementById('tab-personal').addEventListener('click', () => showTab('personal'));
+  document.getElementById('tab-income').addEventListener('click', () => {
+    if (validateTab(document.getElementById('panel-personal'))) showTab('income');
+  });
+  document.querySelector('.next-tab').addEventListener('click', () => {
+    if (validateTab(document.getElementById('panel-personal'))) showTab('income');
+  });
+  document.querySelector('.back-tab').addEventListener('click', () => showTab('personal'));
+  document.getElementById('add-dependent').addEventListener('click', () => makeDependent());
+  document.getElementById('add-loan').addEventListener('click', () => makeLoanCard());
+  document.getElementById('apply-historical-references').addEventListener('click', () => {
+    for (const category of INVESTMENTS.filter(item => item.historicalAverage !== undefined)) {
+      const row = document.querySelector(`[data-investment="${category.id}"]`);
+      [1, 2, 3, 4].forEach(period => { row.querySelector(`[data-return="${period}"]`).value = category.historicalAverage; });
+    }
+    setText('benchmark-status', 'Applied available NSE rolling five-year averages to Large cap and Mid cap.');
+  });
+  const retirementAge = document.getElementById('retirement-age');
+  const retirementEndAge = document.getElementById('retirement-end-age');
+  const validateRetirementAges = () => retirementEndAge.setCustomValidity(
+    Number(retirementEndAge.value) <= Number(retirementAge.value)
+      ? 'Plan-through age must be greater than retirement age.'
+      : ''
+  );
+  retirementAge.addEventListener('input', validateRetirementAges);
+  retirementEndAge.addEventListener('input', validateRetirementAges);
+  validateRetirementAges();
+  document.getElementById('financial-form').addEventListener('submit', saveUserData);
+});

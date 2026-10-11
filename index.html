@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f6f7f4">
+  <title>Personal Finance Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="loans.css">
+  <link rel="stylesheet" href="profile-tabs.css">
+  <link rel="stylesheet" href="themes.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <a class="brand" href="#overview" aria-label="Pocket home"><span class="brand-mark">p</span><span>pocket<span class="brand-dot">.</span></span></a>
+      <p class="nav-label">WORKSPACE</p>
+      <nav>
+        <a class="nav-link active" href="#overview"><span class="nav-icon">◫</span> Overview</a>
+        <a class="nav-link" href="#cash-flow"><span class="nav-icon">↗</span> Cash flow</a>
+        <a class="nav-link" href="#projections"><span class="nav-icon">⌁</span> Projections</a>
+        <a class="nav-link" href="#profile"><span class="nav-icon">⚙</span> Your profile</a>
+      </nav>
+      <div class="sidebar-note"><span class="note-icon">✦</span><strong>Your money, in perspective.</strong><p>A clear picture today makes planning for tomorrow easier.</p></div>
+      <div class="sidebar-footer"><span class="avatar">Y</span><span><strong>Your finances</strong><small>Stored in this browser</small></span></div>
+    </aside>
+
+    <main class="main-content" id="overview">
+      <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> Overview</div><div class="today-pill"><span class="status-dot"></span> Personal dashboard</div></header>
+      <section class="welcome-row"><div><p class="eyebrow">YOUR FINANCIAL SNAPSHOT</p><h1>A clearer view of your money.</h1><p class="welcome-copy">A simple starting point for understanding your finances and planning ahead.</p></div><a class="edit-button" href="#profile"><span>＋</span> Update your numbers</a></section>
+
+      <section class="metrics-grid" aria-label="Financial summary">
+        <article class="metric-card primary-metric"><div class="metric-heading"><span>Net worth</span><span class="metric-icon">◈</span></div><p class="metric-value" id="net-worth">₹0</p><p class="metric-caption">Savings and investments minus loans</p><div class="metric-foot"><span class="metric-tag">CURRENT POSITION</span></div></article>
+        <article class="metric-card"><div class="metric-heading"><span>Monthly surplus</span><span class="metric-icon green">↗</span></div><p class="metric-value" id="monthly-surplus">₹0</p><p class="metric-caption">Income remaining after expenses</p><div class="metric-foot"><span class="metric-tag">EACH MONTH</span></div></article>
+        <article class="metric-card"><div class="metric-heading"><span>Savings rate</span><span class="metric-icon purple">◌</span></div><p class="metric-value" id="savings-rate">0%</p><p class="metric-caption">Of your monthly income</p><div class="metric-foot"><span class="metric-tag">SAVING HABIT</span></div></article>
+        <article class="metric-card"><div class="metric-heading"><span>Emergency fund</span><span class="metric-icon amber">⌂</span></div><p class="metric-value" id="emergency-fund">—</p><p class="metric-caption" id="emergency-caption">Add your savings and expenses</p><div class="progress-track"><span id="emergency-progress"></span></div></article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel chart-panel" id="projections"><div class="panel-heading"><div><p class="eyebrow">LOOKING AHEAD</p><h2>20-year investment projection</h2></div><span class="horizon-badge">4 × 5-year periods</span></div><p class="panel-description">Models your investments, loan EMIs, and age-based dependent costs.</p><div class="chart-summary"><span>Estimated future value</span><strong id="projection-total">₹0</strong><span class="assumption">Nominal value at year 20</span></div><div class="chart-wrap"><canvas id="financial-chart" aria-label="Projected investment values at five-year intervals" role="img"></canvas></div><p class="blend-return" id="blend-return-summary"></p><p class="disclaimer">Illustrative scenario only. Returns are editable assumptions, not forecasts or guarantees.</p></article>
+        <article class="panel breakdown-panel" id="cash-flow"><div class="panel-heading"><div><p class="eyebrow">AT A GLANCE</p><h2>Assets & commitments</h2></div><span class="round-icon">◉</span></div><div class="balance-row"><span><i class="legend-dot assets"></i> Savings & investments</span><strong id="assets-total">₹0</strong></div><div class="balance-row"><span><i class="legend-dot debt"></i> Loan balances</span><strong id="debt-total">₹0</strong></div><div class="balance-row"><span>Dependent costs / month</span><strong id="dependent-cost-total">₹0</strong></div><div class="balance-row"><span>Loan EMIs / month</span><strong id="emi-total">₹0</strong></div><div class="balance-line"></div><div class="balance-row total-row"><span>Net worth</span><strong id="breakdown-net-worth">₹0</strong></div><div class="insight-box"><span class="insight-icon">✦</span><div><strong id="insight-title">Start with your numbers</strong><p id="insight-copy">Add a few details below to see a personal snapshot here.</p></div></div></article>
+      </section>
+
+      <section class="panel retirement-panel" id="retirement-planning"><div class="panel-heading"><div><p class="eyebrow">LONG-TERM GOAL</p><h2>Retirement outlook</h2></div><span class="horizon-badge">Based on your assumptions</span></div><p class="panel-description">Compare your projected general investments at retirement with an estimated fund target for your retirement spending.</p><div id="retirement-summary" class="retirement-summary"><p class="education-empty">Add your age and retirement assumptions in Personal details to see an estimate.</p></div><p class="disclaimer">Illustrative estimate. Assumes current income, savings, and return assumptions continue; excludes dedicated education funds. Taxes, healthcare, inflation, and market returns may differ.</p></section>
+
+      <section class="panel education-panel" id="education-planning"><div class="panel-heading"><div><p class="eyebrow">FAMILY GOALS</p><h2>Education fund plans</h2></div><span class="horizon-badge">Per dependent</span></div><p class="panel-description">Estimated education costs are inflated to each target age. Compare the projected fund with the goal and monthly savings needed.</p><div id="education-summary-list" class="education-summary-list"><p class="education-empty">Add a dependent and education estimate in Personal details to see a plan.</p></div><p class="disclaimer">Education funds and monthly education savings are included in net worth and projections. Keep dedicated education amounts out of the general investment balances to avoid double counting. Planning estimate only; returns and education inflation can vary.</p></section>
+
+      <section class="panel form-panel" id="profile">
+        <div class="panel-heading form-heading"><div><p class="eyebrow">YOUR DETAILS</p><h2>Build your financial picture</h2></div><span class="local-badge"><span class="status-dot"></span> Saved on this device</span></div>
+        <p class="panel-description">Start with your household, then add income, investments, and projection assumptions.</p>
+        <form id="financial-form" novalidate>
+          <div class="profile-tabs" role="tablist" aria-label="Financial profile sections">
+            <button type="button" class="profile-tab active" id="tab-personal" role="tab" aria-selected="true" aria-controls="panel-personal">1. Personal details</button>
+            <button type="button" class="profile-tab" id="tab-income" role="tab" aria-selected="false" aria-controls="panel-income">2. Income & savings</button>
+          </div>
+          <section class="tab-panel" id="panel-personal" role="tabpanel" aria-labelledby="tab-personal">
+            <div class="form-section-title"><span>01</span><div><strong>About you</strong><small>Used to frame your long-term plan</small></div></div>
+            <div class="form-grid three-col"><label class="field"><span>Your age</span><div class="input-wrap"><input type="number" id="age" name="age" min="18" max="100" placeholder="e.g. 32" required><span>years</span></div></label><label class="field"><span>Marital status</span><div class="input-wrap"><select id="marital-status" name="maritalStatus" required><option>Single</option><option>Married</option><option>Partnered</option><option>Divorced</option><option>Widowed</option></select></div></label><label class="field"><span>Inflation assumption</span><div class="input-wrap"><input type="number" id="inflation" name="inflation" min="0" max="50" step="0.1" placeholder="e.g. 4.5" required><span>% / year</span></div></label></div>
+            <div class="form-section-title section-spaced"><span>02</span><div><strong>Retirement goal</strong><small>Set a target age and spending level in today's rupees</small></div></div>
+            <div class="form-grid three-col"><label class="field"><span>Retirement age</span><div class="input-wrap"><input type="number" id="retirement-age" min="18" max="100" step="1" value="60" required><span>years</span></div></label><label class="field"><span>Monthly spending in retirement</span><div class="input-wrap currency-input"><span>₹</span><input type="number" id="retirement-expenses" min="0" step="1000" placeholder="Today's rupees" required></div></label><label class="field"><span>Plan through age</span><div class="input-wrap"><input type="number" id="retirement-end-age" min="50" max="120" step="1" value="90" required><span>years</span></div></label></div>
+            <div class="form-section-title section-spaced dependents-heading"><span>03</span><div><strong>Dependents</strong><small>Add their relationship, age, detailed monthly costs, and an education goal</small></div><button type="button" id="add-dependent" class="add-loan-button">＋ Add dependent</button></div>
+            <div id="dependent-list" class="dependent-list"><p class="empty-loans">No dependents added.</p></div>
+            <div class="tab-actions"><span></span><button type="button" class="save-button next-tab">Continue to income & savings <span>→</span></button></div>
+          </section>
+          <section class="tab-panel" id="panel-income" role="tabpanel" aria-labelledby="tab-income" hidden>
+            <div class="form-section-title"><span>04</span><div><strong>Income & monthly cash flow</strong><small>Take-home salary and recurring household outgoings</small></div></div>
+            <div class="form-grid three-col"><label class="field"><span>Monthly take-home salary</span><div class="input-wrap currency-input"><span>₹</span><input type="number" id="income" min="0" step="1000" placeholder="e.g. 120,000" required></div></label><label class="field"><span>Monthly expenses <small class="field-hint">excluding loan EMIs</small></span><div class="input-wrap currency-input"><span>₹</span><input type="number" id="expenses" min="0" step="1000" placeholder="e.g. 65,000" required></div></label><label class="field"><span>Annual net RSU vesting</span><div class="input-wrap currency-input"><span>₹</span><input type="number" id="rsu-income" min="0" step="1000" placeholder="e.g. 300,000" required></div></label></div>
+            <div class="form-section-title section-spaced"><span>05</span><div><strong>Investments by category</strong><small>Enter current balance and monthly contribution for each</small></div></div>
+            <div class="historical-actions"><button type="button" class="add-loan-button" id="apply-historical-references">Apply NSE 5-year rolling averages</button><span id="benchmark-status" role="status">Available only for categories with comparable published data.</span></div>
+            <div id="investment-table-wrap" class="investment-table-wrap"></div>
+            <p class="assumption-note">The published equity references are means of historical rolling 5-year CAGRs, not returns for four specific historical blocks. They are only reference scenarios when applied to future periods. Other categories remain editable assumptions because products and rates differ. Rates can change, and past performance does not guarantee future results. See the linked NSE source notes for each available reference.</p>
+            <div class="form-section-title section-spaced loan-section-heading"><span>06</span><div><strong>Loans</strong><small>Balances, monthly EMIs, and repayment terms</small></div><button type="button" id="add-loan" class="add-loan-button">＋ Add a loan</button></div>
+            <div id="loan-list" class="loan-list"><p class="empty-loans">No loans added. Add a loan to include its balance and EMI in your snapshot.</p></div>
+            <div class="tab-actions"><button type="button" class="back-tab">← Back to personal details</button><div class="form-actions"><p id="save-status" role="status">Your information is stored only in this browser.</p><button type="submit" class="save-button">Save my snapshot <span>→</span></button></div></div>
+          </section>
+        </form>
+      </section>
+      <footer class="page-footer"><span>Made for a more mindful relationship with money.</span><span>For planning purposes only · Not financial advice</span></footer>
+    </main>
+  </div>
+</body>
+</html>

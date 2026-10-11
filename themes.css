@@ -1,0 +1,14 @@
+body[data-theme="dark"]{background:#171b18;color:#e9eee8}
+body[data-theme="dark"] .sidebar,body[data-theme="dark"] .metric-card:not(.primary-metric),body[data-theme="dark"] .panel,body[data-theme="dark"] .today-pill,body[data-theme="dark"] .local-badge,body[data-theme="dark"] .input-wrap,body[data-theme="dark"] .dependent-card,body[data-theme="dark"] .education-summary-card,body[data-theme="dark"] .investment-table{background:#222824;color:#e9eee8;border-color:#353e37}
+body[data-theme="dark"] .main-content,body[data-theme="dark"] .topbar,body[data-theme="dark"] .sidebar-footer,body[data-theme="dark"] .form-actions,body[data-theme="dark"] .balance-line,body[data-theme="dark"] .investment-table th,body[data-theme="dark"] .investment-table td,body[data-theme="dark"] .risk-details,body[data-theme="dark"] .profile-tools{border-color:#353e37}
+body[data-theme="dark"] .panel h2,body[data-theme="dark"] .settings-panel summary strong,body[data-theme="dark"] .education-summary-heading strong,body[data-theme="dark"] .balance-row strong,body[data-theme="dark"] .risk-details strong,body[data-theme="dark"] .field,body[data-theme="dark"] .form-section-title strong,body[data-theme="dark"] .dependent-title{color:#e5ebe4}
+body[data-theme="dark"] .input-wrap input,body[data-theme="dark"] .input-wrap select,body[data-theme="dark"] .settings-grid select{color:#e9eee8}
+body[data-theme="dark"] .investment-table thead th,body[data-theme="dark"] .investment-table tbody th{background:#262e29;color:#dce4dc}
+body[data-theme="dark"] .nav-link.active,body[data-theme="dark"] .insight-box,body[data-theme="dark"] .education-empty{background:#29342d;color:#bdd3c2}
+body[data-theme="dark"] .education-gap,body[data-theme="dark"] .retirement-outcome{background:#463b29;color:#eed39c}
+body[data-theme="dark"] .education-gap.on-track,body[data-theme="dark"] .retirement-outcome.on-track{background:#293b2e;color:#c1ddc8}
+body[data-theme="dark"] .risk-track{background:#384239}
+body[data-theme="dark"] .profile-tab{color:#aeb8ae}
+body[data-theme="dark"] .profile-tab.active{color:#9bd0a9}
+body[data-theme="dark"] .investment-table-wrap{border-color:#353e37}
+body[data-theme="dark"] .historical-reference,body[data-theme="dark"] .panel-description,body[data-theme="dark"] .disclaimer,body[data-theme="dark"] .retirement-note,body[data-theme="dark"] .settings-status{color:#a4aea4}

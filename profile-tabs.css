@@ -1,0 +1,87 @@
+.profile-tabs{display:flex;gap:7px;border-bottom:1px solid #ebede8;margin:20px 0 22px}
+.profile-tab{background:transparent;border:0;border-bottom:2px solid transparent;color:#858a83;padding:11px 14px;font-size:11px;font-weight:600;cursor:pointer;margin-bottom:-1px}
+.profile-tab.active{color:#276c4d;border-color:#347b54}
+.tab-panel[hidden]{display:none}
+.tab-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid #eff0ed;margin-top:23px;padding-top:16px}
+.tab-actions>.form-actions{border:0;margin:0;padding:0;flex:1;justify-content:flex-end;gap:12px}
+.back-tab{background:transparent;border:0;color:#647065;font-size:10px;font-weight:600;cursor:pointer;padding:8px 0}
+.dependents-heading{position:relative}
+.dependent-list{display:grid;grid-template-columns:1fr;gap:10px}
+.dependent-card{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0;padding:14px;border:1px solid #e7eae4;border-radius:8px;background:#fcfdfb}
+.dependent-card-heading,.dependent-education-heading{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between}
+.dependent-card-heading{border-bottom:1px solid #edf0eb;padding-bottom:8px}
+.dependent-expense-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.dependent-expense-total{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #edf0eb;padding-top:9px;font-size:10px;color:#687067}
+.dependent-expense-total strong{font:600 12px Manrope,sans-serif;color:#3f6e4c}
+.input-wrap select{border:0;outline:0;background:transparent;width:100%;font-size:10px;color:#303730}
+.dependent-title{font-size:11px;color:#3a443b}
+.dependent-education-heading{font-size:10px;font-weight:700;color:#3f684b;padding-top:2px}
+.dependent-education-heading small{font-weight:400;color:#92988f;font-size:9px}
+.education-panel{margin-top:16px}
+.risk-panel,.settings-panel{margin-top:16px}
+.risk-summary{margin-top:14px}
+.risk-score{display:flex;align-items:baseline;gap:10px;color:#697167;font-size:10px}
+.risk-score>strong{font:700 25px Manrope,sans-serif;color:#397653}
+.risk-score>strong small{font:500 11px 'DM Sans',sans-serif;color:#92988f}
+.risk-track{height:6px;border-radius:10px;background:#edf0eb;overflow:hidden;margin:8px 0 12px}
+.risk-track span{height:100%;display:block;background:linear-gradient(90deg,#65a378,#d8a95d);border-radius:10px}
+.risk-details{display:flex;justify-content:space-between;gap:10px;padding-top:9px;border-top:1px solid #edf0eb;font-size:9px;color:#898f87}
+.risk-details strong{color:#4c554c;font-weight:600}
+.settings-panel{padding:0}
+.settings-panel summary{display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;list-style:none;padding:17px 20px}
+.settings-panel summary::-webkit-details-marker{display:none}
+.settings-panel summary strong,.settings-panel summary small{display:block}
+.settings-panel summary strong{font:700 12px Manrope,sans-serif;color:#303830}
+.settings-panel summary small{font-size:9px;color:#92988f;margin-top:4px}
+.settings-toggle{font-size:9px;color:#357450;font-weight:700;white-space:nowrap}
+.settings-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0 20px 14px}
+.settings-grid select{border:0;outline:0;background:transparent;width:100%;font-size:10px;color:#303730}
+.settings-hint{font-size:8px;color:#92988f;margin-top:-7px}
+.profile-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid #edf0eb;padding:13px 20px 0}
+.profile-tools .add-loan-button,.profile-tools .remove-loan-button{font-size:9px}
+.import-profile{position:relative;overflow:hidden;cursor:pointer}
+.import-profile input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.settings-status{margin:8px 20px 16px;font-size:9px;color:#898f87}
+.retirement-panel{margin-top:16px}
+.retirement-summary{margin-top:14px}
+.retirement-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;border:1px solid #e9ebe6;border-radius:8px;padding:14px;background:#fff}
+.retirement-metrics>div{display:grid;gap:5px}
+.retirement-metrics small{font-size:9px;color:#8b928a}
+.retirement-metrics strong{font:600 12px Manrope,sans-serif;color:#3f6e4c}
+.retirement-outcome{margin:10px 0 0;padding:10px 12px;border-radius:6px;background:#fbf4e9;color:#875e24;font-size:10px;font-weight:600}
+.retirement-outcome.on-track{background:#eff6f0;color:#3e714b}
+.retirement-note{font-size:9px;line-height:1.5;color:#898f87;margin:7px 0 0}
+.education-summary-list{display:grid;gap:10px;margin-top:14px}
+.education-empty{font-size:10px;color:#8b928a;margin:0;padding:10px 12px;background:#f7f9f6;border-radius:6px}
+.education-summary-card{border:1px solid #e9ebe6;border-radius:8px;padding:14px;background:#fff}
+.education-summary-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.education-summary-heading strong{font:700 11px Manrope,sans-serif;color:#303830}
+.education-summary-heading span{font-size:9px;color:#858c83}
+.education-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.education-metrics>div{display:grid;gap:5px}
+.education-metrics small{font-size:9px;color:#8b928a}
+.education-metrics strong{font:600 12px Manrope,sans-serif;color:#3f6e4c}
+.education-gap{margin-top:12px;background:#fbf4e9;border-radius:6px;padding:9px 11px;color:#875e24;font-size:10px}
+.education-gap.on-track{background:#eff6f0;color:#3e714b}
+.education-gap p{margin:3px 0 0;font-size:9px;line-height:1.5;color:inherit}
+.investment-table-wrap{max-width:100%;overflow-x:auto;border:1px solid #e9ebe6;border-radius:8px}
+.investment-table{width:100%;min-width:840px;border-collapse:collapse;background:white;font-size:9px}
+.investment-table th,.investment-table td{padding:7px 6px;border-bottom:1px solid #f0f1ee;text-align:center}
+.investment-table thead th{background:#f8faf7;color:#747b73;font-weight:600;white-space:nowrap}
+.investment-table thead th:first-child{text-align:left;padding-left:11px}
+.investment-table tbody th{white-space:nowrap;text-align:left;padding-left:11px;color:#4e574e;font-weight:600}
+.historical-reference{display:block;max-width:155px;margin-top:3px;color:#899188;font-size:8px;line-height:1.4;font-weight:400;white-space:normal}
+.historical-reference a{color:#2c754e;font-weight:600}
+.historical-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 9px}
+.historical-actions>span{font-size:9px;color:#8a9088}
+.investment-table tbody tr:last-child th,.investment-table tbody tr:last-child td{border-bottom:0}
+.investment-table input{width:100%;min-width:75px;height:29px;border:1px solid #e7eae4;border-radius:5px;padding:0 5px;text-align:right;font-size:9px;color:#353c35;outline-color:#70a887}
+.return-input{display:flex;align-items:center;gap:2px;border:1px solid #e7eae4;border-radius:5px;padding-right:4px;min-width:57px}
+.return-input input{min-width:0;width:100%;border:0;text-align:right;padding:0 1px}
+.return-input span{color:#888f87;font-size:9px}
+.assumption-note{font-size:9px;line-height:1.6;color:#898f87;margin:9px 0 0}
+.assumption-note a{color:#286e4d}
+.blend-return{min-height:24px;color:#758076;font-size:9px;line-height:1.6;margin:9px 0 0}
+.horizon-badge{border-radius:20px;padding:6px 9px;background:#f0f5f0;color:#55735e;font-size:9px;white-space:nowrap}
+@media(max-width:760px){.dependent-card{grid-template-columns:repeat(2,minmax(0,1fr))}.dependent-expense-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.education-metrics,.retirement-metrics,.settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tab-actions{align-items:flex-start;flex-wrap:wrap}.tab-actions>.form-actions{width:100%;flex-basis:100%;justify-content:space-between}.profile-tab{padding:10px 8px;font-size:10px}}
+@media(max-width:420px){.dependent-card{grid-template-columns:1fr}.dependent-expense-grid{grid-template-columns:1fr}.dependent-education-heading{align-items:flex-start;flex-direction:column;gap:3px}.education-metrics,.retirement-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.education-summary-heading{align-items:flex-start;flex-direction:column}.profile-tabs{gap:0}.profile-tab{flex:1}}
