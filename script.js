@@ -14,9 +14,12 @@ const INVESTMENTS = [
 ];
 const DEPENDENT_EXPENSES = {
   Child: [
-    { id: 'food', label: 'Food and daily needs' }, { id: 'schooling', label: 'School tuition and fees' }, { id: 'clothing', label: 'Clothing' },
-    { id: 'childcare', label: 'Childcare' }, { id: 'healthcare', label: 'Healthcare' },
-    { id: 'transport', label: 'Transport' }, { id: 'activities', label: 'Activities and hobbies' }, { id: 'other', label: 'Other costs' }
+    { id: 'primaryCare', label: 'Primary care (ages 0–5)', fromAge: 0, toAge: 5, defaultMonthly: 10000 },
+    { id: 'primaryEducation', label: 'Primary education (ages 6–10)', fromAge: 6, toAge: 10, defaultMonthly: 15000 },
+    { id: 'secondaryEducation', label: 'Secondary education (ages 11–17)', fromAge: 11, toAge: 17, defaultMonthly: 22000 },
+    { id: 'bachelors', label: 'Bachelor’s degree (ages 18–21)', fromAge: 18, toAge: 21, defaultMonthly: 35000 },
+    { id: 'masters', label: 'Master’s degree (ages 22–24)', fromAge: 22, toAge: 24, defaultMonthly: 40000 },
+    { id: 'marriage', label: 'Marriage fund (monthly saving, age 25+)', fromAge: 25, toAge: 120, defaultMonthly: 0 }
   ],
   Parent: [
     { id: 'household', label: 'Living support' }, { id: 'medical', label: 'Medical expenses' },
@@ -45,7 +48,7 @@ const HOUSEHOLD_EXPENSES = [
   { id: 'travel', label: 'Travel and holidays (monthly average)' }, { id: 'gifts', label: 'Gifts and donations' }, { id: 'entertainment', label: 'Entertainment and recreation' },
   { id: 'other', label: 'Other regular expenses' }
 ];
-const DEPENDENT_END_AGE = { Child: 18, Parent: 120, Sibling: 25, Other: 120 };
+const DEPENDENT_END_AGE = { Child: 25, Parent: 120, Sibling: 25, Other: 120 };
 const MARITAL_STATUSES = ['Single', 'Married', 'Partnered', 'Divorced', 'Widowed'];
 let currencyCode = 'INR';
 let currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: currencyCode, maximumFractionDigits: 0 });
@@ -112,6 +115,17 @@ function buildProfileTools() {
   });
 }
 
+function dependentMonthlyCostAtAge(dependent, age = Number(dependent.age) || 0) {
+  const categories = DEPENDENT_EXPENSES[dependent.relation] || DEPENDENT_EXPENSES.Other;
+  if (dependent.relation === 'Child') {
+    const stage = categories.find(category => age >= category.fromAge && age <= category.toAge) || categories[0];
+    const stageCost = Number(dependent.expenseDetails?.[stage.id]) || 0;
+    const marriageSaving = stage.id === 'marriage' ? 0 : Number(dependent.expenseDetails?.marriage) || 0;
+    return stageCost + marriageSaving;
+  }
+  return categories.reduce((sum, category) => sum + (Number(dependent.expenseDetails?.[category.id]) || 0), 0);
+}
+
 function loadUserData() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
@@ -128,18 +142,27 @@ function loadUserData() {
       const normalized = typeof dependent === 'number' ? { age: dependent } : dependent;
       const legacySpouse = normalized.relation === 'Spouse / partner';
       const relation = legacySpouse ? 'Other' : DEPENDENT_RELATIONS.includes(normalized.relation) ? normalized.relation : 'Child';
+      const legacyExpenseDetails = normalized.expenseDetails && typeof normalized.expenseDetails === 'object' ? normalized.expenseDetails : {};
+      const wasLegacyChildCosts = relation === 'Child' && !DEPENDENT_EXPENSES.Child.some(category => Object.hasOwn(legacyExpenseDetails, category.id));
       const endAge = Number(normalized.endAge ?? DEPENDENT_END_AGE[relation]);
       const categories = DEPENDENT_EXPENSES[relation];
       const expenseDetails = legacySpouse
         ? { other: Number(normalized.monthlyCost) || Object.values(normalized.expenseDetails || {}).reduce((sum, value) => sum + (Number(value) || 0), 0) }
-        : normalized.expenseDetails && typeof normalized.expenseDetails === 'object'
-          ? normalized.expenseDetails
-          : { [categories[categories.length - 1].id]: Number(normalized.monthlyCost) || 0 };
-      const monthlyCost = categories.reduce((sum, category) => sum + (Number(expenseDetails[category.id]) || 0), 0);
+        : relation === 'Child'
+          ? Object.fromEntries(categories.map(category => [category.id,
+            wasLegacyChildCosts
+              ? category.id === (categories.find(item => (Number(normalized.age) || 0) >= item.fromAge && (Number(normalized.age) || 0) <= item.toAge) || categories[0]).id
+                ? Number(normalized.monthlyCost) || Object.values(legacyExpenseDetails).reduce((sum, value) => sum + (Number(value) || 0), 0)
+                : category.defaultMonthly
+              : Number(legacyExpenseDetails[category.id] ?? category.defaultMonthly) || 0]))
+          : normalized.expenseDetails && typeof normalized.expenseDetails === 'object'
+            ? normalized.expenseDetails
+            : { [categories[categories.length - 1].id]: Number(normalized.monthlyCost) || 0 };
+      const monthlyCost = dependentMonthlyCostAtAge({ relation, age: normalized.age, expenseDetails });
       return {
-        monthlyCost: 0, endAge, educationTargetAge: 18, educationCostToday: 0,
+        monthlyCost: 0, educationTargetAge: 18, educationCostToday: 0,
         educationFund: 0, educationMonthly: 0, educationReturn: 7, educationInflation: 8,
-        ...normalized, relation, expenseDetails, monthlyCost
+        ...normalized, relation, endAge: wasLegacyChildCosts && endAge === 18 ? 25 : endAge, expenseDetails, monthlyCost
       };
     });
     if (!Array.isArray(data.loans)) data.loans = [];
@@ -194,10 +217,13 @@ function readForm() {
     retirementEndAge: Number(document.getElementById('retirement-end-age').value),
     dependents: [...document.querySelectorAll('.dependent-card')].map(row => {
       const expenseDetails = Object.fromEntries([...row.querySelectorAll('[data-dependent-expense]')].map(input => [input.dataset.dependentExpense, Number(input.value) || 0]));
+      const relation = row.querySelector('[data-dependent="relation"]').value;
+      const age = Number(row.querySelector('[data-dependent="age"]').value);
+      const dependentCosts = { relation, age, expenseDetails };
       return {
-        relation: row.querySelector('[data-dependent="relation"]').value,
-        age: Number(row.querySelector('[data-dependent="age"]').value),
-        monthlyCost: Object.values(expenseDetails).reduce((sum, value) => sum + value, 0),
+        relation,
+        age,
+        monthlyCost: dependentMonthlyCostAtAge(dependentCosts),
         expenseDetails,
         endAge: Number(row.querySelector('[data-dependent="endAge"]').value),
         educationTargetAge: Number(row.querySelector('[data-dependent="targetAge"]').value),
@@ -240,7 +266,7 @@ function calculateFinances(data) {
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const monthlyEmis = data.loans.reduce((sum, loan) => sum + (loan.startDate && loan.startDate > todayKey ? 0 : loan.emi), 0);
   const monthlyIncome = data.salary + data.rsuAnnual / 12;
-  const dependentMonthlyCost = data.dependents.reduce((sum, dependent) => sum + (dependent.age < dependent.endAge ? dependent.monthlyCost : 0), 0);
+  const dependentMonthlyCost = data.dependents.reduce((sum, dependent) => sum + (dependent.age < dependent.endAge ? dependentMonthlyCostAtAge(dependent) : 0), 0);
   const surplus = monthlyIncome - data.expenses - dependentMonthlyCost - monthlyEmis - monthlyInvestments;
   const cash = data.investments.cash?.balance || 0;
   return {
@@ -329,7 +355,7 @@ function projection(data, horizon = 20) {
       const dependentCost = data.dependents.reduce((sum, dependent) => {
         const ageAtMonth = dependent.age + monthOffset / 12;
         return ageAtMonth < dependent.endAge
-          ? sum + dependent.monthlyCost * (1 + data.inflation / 100) ** (monthOffset / 12)
+          ? sum + dependentMonthlyCostAtAge(dependent, ageAtMonth) * (1 + data.inflation / 100) ** (monthOffset / 12)
           : sum;
       }, 0);
       const monthlyIncome = data.salary + data.rsuAnnual / 12;
@@ -442,7 +468,7 @@ function retirementForecast(data) {
     const monthOffset = month;
     const dependentCost = data.dependents.reduce((sum, dependent) => {
       const ageAtMonth = dependent.age + monthOffset / 12;
-      return ageAtMonth < dependent.endAge ? sum + dependent.monthlyCost * (1 + inflation) ** (monthOffset / 12) : sum;
+      return ageAtMonth < dependent.endAge ? sum + dependentMonthlyCostAtAge(dependent, ageAtMonth) * (1 + inflation) ** (monthOffset / 12) : sum;
     }, 0);
     const monthlyIncome = data.salary + data.rsuAnnual / 12;
     const available = monthlyIncome - data.expenses * (1 + inflation) ** (monthOffset / 12) - dependentCost - emiForProjectionMonth(data, monthOffset);
@@ -471,7 +497,7 @@ function retirementForecast(data) {
       : adultAgeFactor(selfAge);
     const continuingDependentCosts = data.dependents.reduce((sum, dependent) => {
       const dependentAge = dependent.age + years + year;
-      return dependentAge < dependent.endAge ? sum + dependent.monthlyCost : sum;
+      return dependentAge < dependent.endAge ? sum + dependentMonthlyCostAtAge(dependent, dependentAge) : sum;
     }, 0);
     const todayMonthlyCost = data.expenses * retirementReduction * adultAgeCostFactor + continuingDependentCosts;
     const futureMonthlyCost = todayMonthlyCost * (1 + inflation) ** (years + year);
@@ -566,13 +592,18 @@ function updateDependentExpenseFields(card) {
   card._expenseDetails = { ...card._expenseDetails, ...currentValues };
   const relation = card.querySelector('[data-dependent="relation"]').value;
   const categories = DEPENDENT_EXPENSES[relation] || DEPENDENT_EXPENSES.Other;
+  categories.forEach(category => {
+    if (card._expenseDetails[category.id] === undefined) card._expenseDetails[category.id] = category.defaultMonthly || 0;
+  });
   const fields = card.querySelector('.dependent-expense-grid');
-  fields.innerHTML = categories.map(category => `<label class="field"><span>${category.label} / month</span><div class="input-wrap currency-input"><span>${currencySymbol}</span><input type="number" min="0" step="500" data-dependent-expense="${category.id}" value="${Number(card._expenseDetails[category.id]) || 0}" aria-label="${category.label} monthly cost"></div></label>`).join('');
+  fields.innerHTML = categories.map(category => `<label class="field"><span>${category.label} / month</span><div class="input-wrap currency-input"><span>${currencySymbol}</span><input type="number" min="0" step="500" data-dependent-expense="${category.id}" value="${Number(card._expenseDetails[category.id] ?? category.defaultMonthly) || 0}" aria-label="${category.label} monthly cost"></div></label>`).join('');
   fields.querySelectorAll('[data-dependent-expense]').forEach(input => input.addEventListener('input', () => {
     card._expenseDetails[input.dataset.dependentExpense] = Number(input.value) || 0;
-    card.querySelector('[data-dependent="cost-total"]').textContent = currency.format([...fields.querySelectorAll('[data-dependent-expense]')].reduce((sum, field) => sum + (Number(field.value) || 0), 0));
+    const age = Number(card.querySelector('[data-dependent="age"]').value) || 0;
+    card.querySelector('[data-dependent="cost-total"]').textContent = currency.format(dependentMonthlyCostAtAge({ relation, age, expenseDetails: card._expenseDetails }));
   }));
-  const total = categories.reduce((sum, category) => sum + (Number(card._expenseDetails[category.id]) || 0), 0);
+  const age = Number(card.querySelector('[data-dependent="age"]').value) || 0;
+  const total = dependentMonthlyCostAtAge({ relation, age, expenseDetails: card._expenseDetails });
   card.querySelector('[data-dependent="cost-total"]').textContent = currency.format(total);
 }
 
@@ -581,14 +612,14 @@ function makeDependent(dependent = {}) {
   const row = document.createElement('div');
   row.className = 'dependent-card';
   const val = (key, fallback = 0) => Number(dependent[key] ?? fallback);
-  row._expenseDetails = { ...(dependent.expenseDetails || {}) };
+  row._expenseDetails = { ...(dependent.relation === 'Child' ? Object.fromEntries(DEPENDENT_EXPENSES.Child.map(category => [category.id, category.defaultMonthly])) : {}), ...(dependent.expenseDetails || {}) };
   row.innerHTML = `<div class="dependent-card-heading"><strong class="dependent-title">Dependent</strong><button type="button" class="remove-loan-button">Remove</button></div>
     <label class="field"><span>Age</span><div class="input-wrap"><input type="number" data-dependent="age" min="0" max="120" step="1" placeholder="e.g. 8" value="${Number(dependent.age) || ''}" required><span>years</span></div></label>
     <label class="field"><span>Relationship</span><div class="input-wrap"><select data-dependent="relation" aria-label="Dependent relationship">${DEPENDENT_RELATIONS.map(relation => `<option value="${relation}">${relation}</option>`).join('')}</select></div></label>
     <label class="field"><span>Cost continues until age</span><div class="input-wrap"><input type="number" data-dependent="endAge" min="0" max="120" step="1" value="${val('endAge', DEPENDENT_END_AGE[dependent.relation] || 18)}" required><span>years</span></div></label>
-    <div class="dependent-education-heading dependent-expense-heading">Monthly expenses <small>Enter today's amounts. Categories change by relationship; education goal savings are separate.</small></div>
+    <div class="dependent-education-heading dependent-expense-heading">Monthly costs by life stage <small>Child totals use the stage matching their age and add the marriage fund saving. Editable starting estimates in ₹/month.</small></div>
     <div class="dependent-expense-grid"></div>
-    <div class="dependent-expense-total"><span>Total dependent cost / month</span><strong data-dependent="cost-total">${currency.format(0)}</strong></div>
+    <div class="dependent-expense-total"><span>Current stage cost / month</span><strong data-dependent="cost-total">${currency.format(0)}</strong></div>
     <div class="dependent-education-heading">Education goal <small>Costs in today's rupees; use a dedicated fund not listed in general investments</small></div>
     <label class="field"><span>Target age</span><div class="input-wrap"><input type="number" data-dependent="targetAge" min="0" max="120" step="1" value="${val('educationTargetAge', 18)}" required><span>years</span></div></label>
     <label class="field"><span>Total education cost today</span><div class="input-wrap currency-input"><span>${currencySymbol}</span><input type="number" data-dependent="goalCost" min="0" step="10000" value="${val('educationCostToday')}" required></div></label>
@@ -605,6 +636,7 @@ function makeDependent(dependent = {}) {
     updateDependentExpenseFields(row);
     updateDependents();
   });
+  row.querySelector('[data-dependent="age"]').addEventListener('input', () => updateDependentExpenseFields(row));
   updateDependentExpenseFields(row);
   row.querySelector('button').addEventListener('click', () => { row.remove(); updateDependents(); });
   document.getElementById('dependent-list').append(row);
