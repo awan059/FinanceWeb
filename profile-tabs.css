@@ -84,6 +84,11 @@
 .blend-return{min-height:24px;color:#758076;font-size:9px;line-height:1.6;margin:9px 0 0}
 .horizon-badge{border-radius:20px;padding:6px 9px;background:#f0f5f0;color:#55735e;font-size:9px;white-space:nowrap}
 .projection-table-wrap{max-width:100%;overflow-x:auto;margin-top:12px;border:1px solid #e9ebe6;border-radius:8px}
+.projection-table-details>summary{cursor:pointer;list-style:none;padding:10px 12px;background:#f8faf7;color:#526253;font-size:9px;font-weight:600}
+.projection-table-details>summary::-webkit-details-marker{display:none}
+.projection-table-details>summary::after{content:'＋';float:right;color:#63826a}
+.projection-table-details[open]>summary::after{content:'−'}
+.projection-table-details .projection-table{border-top:1px solid #e9ebe6}
 .projection-table{width:100%;min-width:710px;border-collapse:collapse;background:#fff;font-size:9px}
 .projection-table caption{text-align:left;padding:9px 10px;background:#f8faf7;color:#626c62;font-weight:600}
 .projection-table th,.projection-table td{padding:8px 9px;border-bottom:1px solid #f0f1ee;text-align:right;white-space:nowrap}
@@ -96,6 +101,17 @@
 .cashflow-charts h3:not(:first-child){margin-top:16px}
 .cashflow-chart-wrap{height:175px;position:relative}
 .cashflow-chart-wrap.doughnut-wrap{height:205px}
+.monthly-expense-section{margin-top:15px;border:1px solid #e8ebe5;border-radius:8px;background:#fff;padding:14px}
+.expense-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}
+.expense-section-heading>div{display:grid;gap:5px}
+.expense-section-heading>div>strong{font:700 11px Manrope,sans-serif;color:#364337}
+.expense-section-heading small{font-size:9px;line-height:1.5;color:#8a9088}
+.expense-total{display:grid;gap:3px;text-align:right;white-space:nowrap;font-size:9px;color:#838a81}
+.expense-total span{font:700 13px Manrope,sans-serif;color:#3f6e4c}
+.expense-category-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px}
+.expense-category-grid .field>span{min-height:24px;line-height:1.4}
+@media(max-width:760px){.expense-category-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.expense-category-grid{grid-template-columns:1fr}.expense-section-heading{flex-direction:column}.expense-total{text-align:left}}
 @media(max-width:760px){.projection-table{min-width:680px}.cashflow-chart-wrap{height:190px}}
 @media(max-width:760px){.dependent-card{grid-template-columns:repeat(2,minmax(0,1fr))}.dependent-expense-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.education-metrics,.retirement-metrics,.settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tab-actions{align-items:flex-start;flex-wrap:wrap}.tab-actions>.form-actions{width:100%;flex-basis:100%;justify-content:space-between}.profile-tab{padding:10px 8px;font-size:10px}}
 @media(max-width:420px){.dependent-card{grid-template-columns:1fr}.dependent-expense-grid{grid-template-columns:1fr}.dependent-education-heading{align-items:flex-start;flex-direction:column;gap:3px}.education-metrics,.retirement-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.education-summary-heading{align-items:flex-start;flex-direction:column}.profile-tabs{gap:0}.profile-tab{flex:1}}

@@ -32,6 +32,19 @@ const DEPENDENT_EXPENSES = {
   ]
 };
 const DEPENDENT_RELATIONS = Object.keys(DEPENDENT_EXPENSES);
+const HOUSEHOLD_EXPENSES = [
+  { id: 'rent', label: 'Rent / mortgage' }, { id: 'maintenance', label: 'Building or society maintenance' }, { id: 'propertyTax', label: 'Property tax' },
+  { id: 'electricity', label: 'Electricity' }, { id: 'water', label: 'Water and sewerage' }, { id: 'gas', label: 'Cooking gas' },
+  { id: 'groceries', label: 'Groceries and household food' }, { id: 'dining', label: 'Restaurants and cafes' }, { id: 'delivery', label: 'Food delivery / takeaway' },
+  { id: 'fuel', label: 'Fuel' }, { id: 'publicTransport', label: 'Public transport' }, { id: 'rideHailing', label: 'Taxi / ride-hailing' },
+  { id: 'vehiclePayment', label: 'Vehicle lease / payment' }, { id: 'vehicleMaintenance', label: 'Vehicle service, repairs and parking' }, { id: 'tolls', label: 'Tolls and road charges' },
+  { id: 'healthcare', label: 'Doctor, medicines and healthcare' }, { id: 'insurance', label: 'Health and life insurance' }, { id: 'internet', label: 'Internet / broadband' },
+  { id: 'mobile', label: 'Mobile phone plans' }, { id: 'subscriptions', label: 'Streaming and digital subscriptions' }, { id: 'clothing', label: 'Clothing and footwear' },
+  { id: 'personalCare', label: 'Personal care and grooming' }, { id: 'householdSupplies', label: 'Cleaning and household supplies' }, { id: 'domesticHelp', label: 'Domestic help / cleaning' },
+  { id: 'childcare', label: 'Childcare and babysitting' }, { id: 'education', label: 'Education, books and courses' }, { id: 'pets', label: 'Pet food and care' },
+  { id: 'travel', label: 'Travel and holidays (monthly average)' }, { id: 'gifts', label: 'Gifts and donations' }, { id: 'entertainment', label: 'Entertainment and recreation' },
+  { id: 'other', label: 'Other regular expenses' }
+];
 const DEPENDENT_END_AGE = { Child: 18, Parent: 120, Sibling: 25, Other: 120 };
 const MARITAL_STATUSES = ['Single', 'Married', 'Partnered', 'Divorced', 'Widowed'];
 let currencyCode = 'INR';
@@ -104,6 +117,10 @@ function loadUserData() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!saved || typeof saved !== 'object') return null;
     const data = { age: '', maritalStatus: 'Single', spouseAge: null, inflation: '', retirementAge: 60, retirementReduction: 70, retirementEndAge: 90, dependents: [], salary: '', expenses: '', rsuAnnual: 0, investments: {}, loans: [], ...saved };
+    data.expenseDetails = data.expenseDetails && typeof data.expenseDetails === 'object'
+      ? Object.fromEntries(HOUSEHOLD_EXPENSES.map(item => [item.id, Number(data.expenseDetails[item.id]) || 0]))
+      : Object.fromEntries(HOUSEHOLD_EXPENSES.map(item => [item.id, item.id === 'other' ? Number(data.expenses) || 0 : 0]));
+    data.expenses = HOUSEHOLD_EXPENSES.reduce((sum, item) => sum + data.expenseDetails[item.id], 0);
     if (!MARITAL_STATUSES.includes(data.maritalStatus)) data.maritalStatus = 'Single';
     data.spouseAge = Number.isFinite(Number(data.spouseAge)) && data.spouseAge !== null && data.spouseAge !== '' ? Number(data.spouseAge) : null;
     if (!Array.isArray(data.dependents)) data.dependents = [];
@@ -192,10 +209,22 @@ function readForm() {
       };
     }),
     salary: Number(document.getElementById('income').value),
-    expenses: Number(document.getElementById('expenses').value),
+    expenses: HOUSEHOLD_EXPENSES.reduce((sum, item) => sum + (Number(document.querySelector(`[data-household-expense="${item.id}"]`).value) || 0), 0),
+    expenseDetails: Object.fromEntries(HOUSEHOLD_EXPENSES.map(item => [item.id, Number(document.querySelector(`[data-household-expense="${item.id}"]`).value) || 0])),
     rsuAnnual: Number(document.getElementById('rsu-income').value),
     investments, loans
   };
+}
+
+function buildExpenseFields(data) {
+  const grid = document.getElementById('expense-category-grid');
+  grid.innerHTML = HOUSEHOLD_EXPENSES.map(item => `<label class="field"><span>${item.label}</span><div class="input-wrap currency-input"><span>${currencySymbol}</span><input type="number" min="0" step="500" value="${Number(data?.expenseDetails?.[item.id]) || 0}" data-household-expense="${item.id}" aria-label="${item.label} per month"></div></label>`).join('');
+  grid.addEventListener('input', () => {
+    const total = HOUSEHOLD_EXPENSES.reduce((sum, item) => sum + (Number(grid.querySelector(`[data-household-expense="${item.id}"]`).value) || 0), 0);
+    document.getElementById('expenses').value = total;
+    setText('expense-total', currency.format(total));
+  });
+  grid.dispatchEvent(new Event('input'));
 }
 
 function calculateFinances(data) {
@@ -270,6 +299,9 @@ function projection(data, horizon = 20) {
   const contributions = [0];
   const educationWithdrawals = [0];
   const blendRates = [];
+  const yearly = { labels: ['Today'], nominal: [summary.assets], real: [summary.assets], contributions: [0], educationWithdrawals: [0], blendRates: [] };
+  let totalContributions = 0;
+  let totalEducationWithdrawals = 0;
   for (let period = 0; period < periodCount; period += 1) {
     const monthsInPeriod = Math.min(60, horizon * 12 - period * 60);
     let periodWeighted = 0;
@@ -291,6 +323,8 @@ function projection(data, horizon = 20) {
     let periodContributions = 0;
     let periodEducationWithdrawals = 0;
     for (let month = 0; month < monthsInPeriod; month += 1) {
+      const contributionsBeforeMonth = periodContributions;
+      const withdrawalsBeforeMonth = periodEducationWithdrawals;
       const monthOffset = period * 60 + month + 1;
       const dependentCost = data.dependents.reduce((sum, dependent) => {
         const ageAtMonth = dependent.age + monthOffset / 12;
@@ -347,6 +381,18 @@ function projection(data, horizon = 20) {
           shortfall -= withdrawal;
         });
       }
+      totalContributions += periodContributions - contributionsBeforeMonth;
+      totalEducationWithdrawals += periodEducationWithdrawals - withdrawalsBeforeMonth;
+      if (monthOffset % 12 === 0 || monthOffset === horizon * 12) {
+        const annualValue = Object.values(balances).reduce((sum, balance) => sum + balance, 0) + educationBalances.reduce((sum, balance) => sum + balance, 0);
+        const year = Math.ceil(monthOffset / 12);
+        yearly.labels.push(`Year ${year}`);
+        yearly.nominal.push(Math.round(annualValue));
+        yearly.real.push(Math.round(annualValue / ((1 + data.inflation / 100) ** year)));
+        yearly.contributions.push(Math.round(totalContributions));
+        yearly.educationWithdrawals.push(Math.round(totalEducationWithdrawals));
+        yearly.blendRates.push(blendRates[period]);
+      }
     }
     const value = Object.values(balances).reduce((sum, balance) => sum + balance, 0) + educationBalances.reduce((sum, balance) => sum + balance, 0);
     const year = Math.min(horizon, (period + 1) * 5);
@@ -356,7 +402,7 @@ function projection(data, horizon = 20) {
     contributions.push(Math.round(contributions.at(-1) + periodContributions));
     educationWithdrawals.push(Math.round(educationWithdrawals.at(-1) + periodEducationWithdrawals));
   }
-  return { labels, nominal, real, blendRates, contributions, educationWithdrawals };
+  return { labels, nominal, real, blendRates, contributions, educationWithdrawals, yearly };
 }
 
 function setText(id, value) { document.getElementById(id).textContent = value; }
@@ -607,13 +653,19 @@ function updateLoanLabels() {
 
 function renderProjectionTable(values) {
   const container = document.getElementById('projection-table');
+  const yearly = values.yearly;
+  const details = document.createElement('details');
+  details.className = 'projection-table-details';
+  const summary = document.createElement('summary');
+  summary.textContent = `Year-by-year calculations (${yearly.labels.length - 1} years)`;
+  details.append(summary);
   const table = document.createElement('table');
   table.className = 'projection-table';
-  table.innerHTML = '<caption>Projection calculations at five-year intervals</caption><thead><tr><th scope="col">Period</th><th scope="col">Blended return</th><th scope="col">Contributions to date</th><th scope="col">Education withdrawals</th><th scope="col">Projected value</th><th scope="col">Value in today’s money</th></tr></thead>';
+  table.innerHTML = '<caption>Projection calculations by year</caption><thead><tr><th scope="col">Year</th><th scope="col">Blended return</th><th scope="col">Contributions to date</th><th scope="col">Education withdrawals</th><th scope="col">Projected value</th><th scope="col">Value in today’s money</th></tr></thead>';
   const body = document.createElement('tbody');
-  values.labels.forEach((label, index) => {
+  yearly.labels.forEach((label, index) => {
     const row = document.createElement('tr');
-    const cells = [label, index ? `${values.blendRates[index - 1].toFixed(1)}%` : '—', currency.format(values.contributions[index]), currency.format(values.educationWithdrawals[index]), currency.format(values.nominal[index]), currency.format(values.real[index])];
+    const cells = [label, index ? `${yearly.blendRates[index - 1].toFixed(1)}%` : '—', currency.format(yearly.contributions[index]), currency.format(yearly.educationWithdrawals[index]), currency.format(yearly.nominal[index]), currency.format(yearly.real[index])];
     cells.forEach((value, cellIndex) => {
       const cell = document.createElement(cellIndex === 0 ? 'th' : 'td');
       if (cellIndex === 0) cell.scope = 'row';
@@ -623,7 +675,8 @@ function renderProjectionTable(values) {
     body.append(row);
   });
   table.append(body);
-  container.replaceChildren(table);
+  details.append(table);
+  container.replaceChildren(details);
 }
 
 function renderCashFlowCharts(data, summary) {
@@ -778,6 +831,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelector('.sidebar-footer strong').textContent = appSettings.profileName;
   document.querySelector('.sidebar-footer .avatar').textContent = appSettings.profileName.slice(0, 1).toUpperCase();
   const data = loadUserData();
+  buildExpenseFields(data);
   buildInvestmentTable(data?.investments || {});
   populateForm(data);
   updateSpouseAgeField();
