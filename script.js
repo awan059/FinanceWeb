@@ -40,6 +40,8 @@ let currencySymbol = '₹';
 const SETTINGS_KEY = 'pocket-finance-settings-v1';
 let appSettings = { profileName: 'My finances', currency: 'INR', horizon: 20, theme: 'light' };
 let financialChart;
+let cashFlowSummaryChart;
+let cashFlowMixChart;
 let chartLoadStarted = false;
 
 function loadAppSettings() {
@@ -101,8 +103,9 @@ function loadUserData() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!saved || typeof saved !== 'object') return null;
-    const data = { age: '', maritalStatus: 'Single', inflation: '', retirementAge: 60, retirementExpenses: 0, retirementEndAge: 90, dependents: [], salary: '', expenses: '', rsuAnnual: 0, investments: {}, loans: [], ...saved };
+    const data = { age: '', maritalStatus: 'Single', spouseAge: null, inflation: '', retirementAge: 60, retirementReduction: 70, retirementEndAge: 90, dependents: [], salary: '', expenses: '', rsuAnnual: 0, investments: {}, loans: [], ...saved };
     if (!MARITAL_STATUSES.includes(data.maritalStatus)) data.maritalStatus = 'Single';
+    data.spouseAge = Number.isFinite(Number(data.spouseAge)) && data.spouseAge !== null && data.spouseAge !== '' ? Number(data.spouseAge) : null;
     if (!Array.isArray(data.dependents)) data.dependents = [];
     data.dependents = data.dependents.map(dependent => {
       const normalized = typeof dependent === 'number' ? { age: dependent } : dependent;
@@ -167,9 +170,10 @@ function readForm() {
   return {
     age: Number(document.getElementById('age').value),
     maritalStatus: document.getElementById('marital-status').value,
+    spouseAge: ['Married', 'Partnered'].includes(document.getElementById('marital-status').value) ? Number(document.getElementById('spouse-age').value) : null,
     inflation: Number(document.getElementById('inflation').value),
     retirementAge: Number(document.getElementById('retirement-age').value),
-    retirementExpenses: Number(document.getElementById('retirement-expenses').value),
+    retirementReduction: Number(document.getElementById('retirement-reduction').value),
     retirementEndAge: Number(document.getElementById('retirement-end-age').value),
     dependents: [...document.querySelectorAll('.dependent-card')].map(row => {
       const expenseDetails = Object.fromEntries([...row.querySelectorAll('[data-dependent-expense]')].map(input => [input.dataset.dependentExpense, Number(input.value) || 0]));
@@ -263,6 +267,8 @@ function projection(data, horizon = 20) {
   const labels = ['Today'];
   const nominal = [summary.assets];
   const real = [summary.assets];
+  const contributions = [0];
+  const educationWithdrawals = [0];
   const blendRates = [];
   for (let period = 0; period < periodCount; period += 1) {
     const monthsInPeriod = Math.min(60, horizon * 12 - period * 60);
@@ -282,6 +288,8 @@ function projection(data, horizon = 20) {
       periodWeight += weight;
     });
     blendRates.push(periodWeight ? periodWeighted / periodWeight : 0);
+    let periodContributions = 0;
+    let periodEducationWithdrawals = 0;
     for (let month = 0; month < monthsInPeriod; month += 1) {
       const monthOffset = period * 60 + month + 1;
       const dependentCost = data.dependents.reduce((sum, dependent) => {
@@ -302,20 +310,28 @@ function projection(data, horizon = 20) {
         const investment = data.investments[item.id];
         const rate = investment.returns[Math.min(3, period)] / 100;
         const categoryMonthly = investment.monthly + (item.id === 'rsu' ? data.rsuAnnual / 12 : 0);
-        balances[item.id] = balances[item.id] * (1 + rate) ** (1 / 12) + categoryMonthly * investmentFactor;
+        const invested = categoryMonthly * investmentFactor;
+        balances[item.id] = balances[item.id] * (1 + rate) ** (1 / 12) + invested;
+        periodContributions += invested;
       }
       data.dependents.forEach((dependent, index) => {
         const monthsUntilGoal = Math.max(0, Math.round((dependent.educationTargetAge - dependent.age) * 12));
         const educationMonthlyRate = dependent.educationReturn / 100 / 12;
         const targetMonth = monthsUntilGoal === 0 ? 1 : monthsUntilGoal;
-        educationBalances[index] = educationBalances[index] * (1 + educationMonthlyRate) + (monthOffset <= monthsUntilGoal ? dependent.educationMonthly * investmentFactor : 0);
+        const educationContribution = monthOffset <= monthsUntilGoal ? dependent.educationMonthly * investmentFactor : 0;
+        educationBalances[index] = educationBalances[index] * (1 + educationMonthlyRate) + educationContribution;
+        periodContributions += educationContribution;
         if (monthOffset === targetMonth && dependent.educationCostToday > 0) {
           const goalCost = dependent.educationCostToday * (1 + dependent.educationInflation / 100) ** (monthsUntilGoal / 12);
-          educationBalances[index] = Math.max(0, educationBalances[index] - goalCost);
+          const goalWithdrawal = Math.min(educationBalances[index], goalCost);
+          educationBalances[index] -= goalWithdrawal;
+          periodEducationWithdrawals += goalWithdrawal;
         }
       });
       if (availableForInvesting > 0) {
-        balances.cash += Math.max(0, availableForInvesting - plannedMonthlyInvestments * investmentFactor);
+        const cashContribution = Math.max(0, availableForInvesting - plannedMonthlyInvestments * investmentFactor);
+        balances.cash += cashContribution;
+        periodContributions += cashContribution;
       } else {
         let shortfall = -availableForInvesting;
         for (const item of [INVESTMENTS[0], ...INVESTMENTS.slice(1)]) {
@@ -337,8 +353,10 @@ function projection(data, horizon = 20) {
     labels.push(`Year ${year}`);
     nominal.push(Math.round(value));
     real.push(Math.round(value / ((1 + data.inflation / 100) ** year)));
+    contributions.push(Math.round(contributions.at(-1) + periodContributions));
+    educationWithdrawals.push(Math.round(educationWithdrawals.at(-1) + periodEducationWithdrawals));
   }
-  return { labels, nominal, real, blendRates };
+  return { labels, nominal, real, blendRates, contributions, educationWithdrawals };
 }
 
 function setText(id, value) { document.getElementById(id).textContent = value; }
@@ -365,8 +383,12 @@ function educationForecast(dependent) {
 
 function retirementForecast(data) {
   const years = Math.max(0, data.retirementAge - data.age);
-  const retirementYears = Math.max(1, data.retirementEndAge - data.retirementAge);
+  const spouseIncludedForPlan = ['Married', 'Partnered'].includes(data.maritalStatus) && data.spouseAge != null;
+  const spouseAtRetirement = spouseIncludedForPlan ? data.spouseAge + years : null;
+  const selfAtRetirement = data.age + years;
+  const retirementYears = Math.max(1, data.retirementEndAge - selfAtRetirement, spouseAtRetirement == null ? 0 : data.retirementEndAge - spouseAtRetirement);
   const inflation = data.inflation / 100;
+  const retirementReduction = data.retirementReduction / 100;
   const assets = Object.fromEntries(INVESTMENTS.map(item => [item.id, data.investments[item.id].balance]));
   const months = years * 12;
   for (let month = 1; month <= months; month += 1) {
@@ -383,42 +405,49 @@ function retirementForecast(data) {
     const totalPlanned = generalMonthly + educationMonthly;
     const factor = totalPlanned > 0 ? Math.min(1, Math.max(0, available) / totalPlanned) : 0;
     for (const item of INVESTMENTS) {
-      const rate = data.investments[item.id].returns[period] / 100;
+      const rate = data.investments[item.id].returns[Math.min(3, period)] / 100;
       const monthly = data.investments[item.id].monthly + (item.id === 'rsu' ? data.rsuAnnual / 12 : 0);
       assets[item.id] = assets[item.id] * (1 + rate) ** (1 / 12) + monthly * factor;
     }
     if (available > 0) assets.cash += Math.max(0, available - totalPlanned * factor);
   }
   const projectedCorpus = Object.values(assets).reduce((sum, value) => sum + value, 0);
-  const spendingAtRetirement = data.retirementExpenses * 12 * (1 + inflation) ** years;
-  const returnWeights = INVESTMENTS.map(item => ({
-    rate: data.investments[item.id].returns[0],
-    weight: data.investments[item.id].balance + data.investments[item.id].monthly * 60 + (item.id === 'rsu' ? data.rsuAnnual / 12 * 60 : 0)
-  }));
-  const returnWeightTotal = returnWeights.reduce((sum, item) => sum + item.weight, 0);
-  const blendedReturn = (returnWeightTotal
-    ? returnWeights.reduce((sum, item) => sum + item.rate * item.weight, 0) / returnWeightTotal
-    : 0) / 100;
-  const realReturn = (1 + blendedReturn) / (1 + inflation) - 1;
-  const annuityFactor = Math.abs(realReturn) < 0.000001
-    ? retirementYears
-    : (1 - (1 + realReturn) ** -retirementYears) / realReturn;
-  const targetCorpus = Math.max(0, spendingAtRetirement * annuityFactor);
+  const adultAgeFactor = age => age < 65 ? 1 : age < 75 ? 1.1 : age < 85 ? 1.25 : age < 95 ? 1.4 : 1.55;
+  const realRetirementReturn = 0.02;
+  const nominalRetirementReturn = (1 + inflation) * (1 + realRetirementReturn) - 1;
+  const annualCosts = [];
+  for (let year = 0; year < retirementYears; year += 1) {
+    const selfAge = selfAtRetirement + year;
+    const spouseAge = spouseAtRetirement == null ? null : spouseAtRetirement + year;
+    const spouseIncluded = spouseAge != null && ['Married', 'Partnered'].includes(data.maritalStatus);
+    const adultAgeCostFactor = spouseIncluded
+      ? (adultAgeFactor(selfAge) + adultAgeFactor(spouseAge) * 0.7) / 1.7
+      : adultAgeFactor(selfAge);
+    const continuingDependentCosts = data.dependents.reduce((sum, dependent) => {
+      const dependentAge = dependent.age + years + year;
+      return dependentAge < dependent.endAge ? sum + dependent.monthlyCost : sum;
+    }, 0);
+    const todayMonthlyCost = data.expenses * retirementReduction * adultAgeCostFactor + continuingDependentCosts;
+    const futureMonthlyCost = todayMonthlyCost * (1 + inflation) ** (years + year);
+    annualCosts.push(futureMonthlyCost * 12);
+  }
+  const spendingAtRetirement = annualCosts[0] || 0;
+  const targetCorpus = annualCosts.reduce((sum, annualCost, year) => sum + annualCost / (1 + nominalRetirementReturn) ** year, 0);
   const shortfall = Math.max(0, targetCorpus - projectedCorpus);
-  return { years, retirementYears, projectedCorpus, targetCorpus, shortfall, spendingAtRetirement };
+  return { years, retirementYears, projectedCorpus, targetCorpus, shortfall, spendingAtRetirement, retirementReduction, realRetirementReturn };
 }
 
 function renderRetirementPlan(data) {
   const container = document.getElementById('retirement-summary');
-  if (!data || !data.age || !data.retirementExpenses) {
-    container.innerHTML = '<p class="education-empty">Add your age and monthly retirement spending in Personal details to see an estimate.</p>';
+  if (!data || !data.age || data.expenses === undefined) {
+    container.innerHTML = '<p class="education-empty">Add your age, monthly household expenses, and retirement assumptions to see an estimate.</p>';
     return;
   }
   const result = retirementForecast(data);
   const outcome = result.shortfall > 0
     ? `Estimated gap: ${currency.format(result.shortfall)} at retirement.`
     : 'Projected investments meet this spending target.';
-  container.innerHTML = `<div class="retirement-metrics"><div><small>Years to retirement</small><strong>${result.years}</strong></div><div><small>Projected investments</small><strong>${currency.format(result.projectedCorpus)}</strong></div><div><small>Estimated fund target</small><strong>${currency.format(result.targetCorpus)}</strong></div><div><small>Annual spending at retirement</small><strong>${currency.format(result.spendingAtRetirement)}</strong></div></div><p class="retirement-outcome ${result.shortfall <= 0 ? 'on-track' : ''}">${outcome}</p><p class="retirement-note">Target supports ${result.retirementYears} years of spending, adjusted for inflation and a simplified real return.</p>`;
+  container.innerHTML = `<div class="retirement-metrics"><div><small>Years to retirement</small><strong>${result.years}</strong></div><div><small>Projected investments</small><strong>${currency.format(result.projectedCorpus)}</strong></div><div><small>Estimated fund target</small><strong>${currency.format(result.targetCorpus)}</strong></div><div><small>First-year spending</small><strong>${currency.format(result.spendingAtRetirement)}</strong></div></div><p class="retirement-outcome ${result.shortfall <= 0 ? 'on-track' : ''}">${outcome}</p><p class="retirement-note">Estimates ${Math.round(result.retirementReduction * 100)}% of current adult household spending, adds age-based healthcare costs, includes dependent costs only while each dependent is under their cost-through age, and plans for ${result.retirementYears} years. Assumes a 2% real return during retirement.</p>`;
 }
 
 function renderEducationPlans(data) {
@@ -576,10 +605,61 @@ function updateLoanLabels() {
   cards.forEach((card, index) => { card.querySelector('.loan-card-title').textContent = `Loan ${index + 1}`; });
 }
 
+function renderProjectionTable(values) {
+  const container = document.getElementById('projection-table');
+  const table = document.createElement('table');
+  table.className = 'projection-table';
+  table.innerHTML = '<caption>Projection calculations at five-year intervals</caption><thead><tr><th scope="col">Period</th><th scope="col">Blended return</th><th scope="col">Contributions to date</th><th scope="col">Education withdrawals</th><th scope="col">Projected value</th><th scope="col">Value in today’s money</th></tr></thead>';
+  const body = document.createElement('tbody');
+  values.labels.forEach((label, index) => {
+    const row = document.createElement('tr');
+    const cells = [label, index ? `${values.blendRates[index - 1].toFixed(1)}%` : '—', currency.format(values.contributions[index]), currency.format(values.educationWithdrawals[index]), currency.format(values.nominal[index]), currency.format(values.real[index])];
+    cells.forEach((value, cellIndex) => {
+      const cell = document.createElement(cellIndex === 0 ? 'th' : 'td');
+      if (cellIndex === 0) cell.scope = 'row';
+      cell.textContent = value;
+      row.append(cell);
+    });
+    body.append(row);
+  });
+  table.append(body);
+  container.replaceChildren(table);
+}
+
+function renderCashFlowCharts(data, summary) {
+  if (!window.Chart) return;
+  const income = data.salary + data.rsuAnnual / 12;
+  const expenses = data.expenses;
+  const dependentCosts = summary.dependentMonthlyCost;
+  const emis = summary.monthlyEmis;
+  const investments = summary.monthlyInvestments;
+  const surplus = Math.max(0, summary.surplus);
+  const deficit = Math.max(0, -summary.surplus);
+  const labels = ['Living expenses', 'Dependent costs', 'Loan EMIs', 'Investments', 'Surplus', 'Shortfall'];
+  const values = [expenses, dependentCosts, emis, investments, surplus, deficit];
+  if (cashFlowSummaryChart) cashFlowSummaryChart.destroy();
+  if (cashFlowMixChart) cashFlowMixChart.destroy();
+  const commonLegend = { display: true, position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 7, padding: 12, color: '#7f867e', font: { family: 'DM Sans', size: 9 } } };
+  cashFlowSummaryChart = new Chart(document.getElementById('cashflow-summary-chart'), {
+    type: 'bar',
+    data: { labels: ['Monthly amount'], datasets: [
+      { label: 'Income', data: [income], backgroundColor: '#2e8059', stack: 'income' },
+      ...labels.map((label, index) => ({ label, data: [values[index]], backgroundColor: ['#9eac98', '#bb9d6c', '#9e7c72', '#7191ae', '#82b58a', '#c76e62'][index], stack: 'outflow' }))
+    ] },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: commonLegend, tooltip: { callbacks: { label: context => `${context.dataset.label}: ${currency.format(context.raw)}` } } }, scales: { x: { beginAtZero: true, stacked: true, ticks: { callback: value => `${currencySymbol}${Math.round(value / 1000)}k`, color: '#989e96', font: { size: 9 } }, grid: { color: '#f0f2ed' }, border: { display: false } }, y: { stacked: true, grid: { display: false }, ticks: { display: false }, border: { display: false } } } }
+  });
+  cashFlowMixChart = new Chart(document.getElementById('cashflow-mix-chart'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: ['#9eac98', '#bb9d6c', '#9e7c72', '#7191ae', '#82b58a', '#c76e62'], borderWidth: 2, borderColor: '#fff' }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '64%', plugins: { legend: commonLegend, tooltip: { callbacks: { label: context => `${context.label}: ${currency.format(context.raw)}` } } } }
+  });
+}
+
 function renderChart(data) {
   if (!data) return;
   const horizon = Number(appSettings.horizon) || 20;
   const values = projection(data, horizon);
+  renderProjectionTable(values);
   setText('projection-total', currency.format(values.nominal.at(-1)));
   const rates = values.blendRates.map((rate, index) => `Y${index * 5 + 1}–${index * 5 + 5}: ${rate.toFixed(1)}%`).join(' · ');
   setText('blend-return-summary', `Blended annual assumptions: ${rates}`);
@@ -607,10 +687,13 @@ function renderChart(data) {
         loadChart();
         }, { rootMargin: '200px' });
         observer.observe(canvas);
+        const cashFlowCanvas = document.getElementById('cashflow-summary-chart');
+        if (cashFlowCanvas) observer.observe(cashFlowCanvas);
       }
     }
     return;
   }
+  renderCashFlowCharts(data, calculateFinances(data));
   if (financialChart) financialChart.destroy();
   financialChart = new Chart(canvas, { type: 'line', data: { labels: values.labels, datasets: [
     { label: 'Projected value', data: values.nominal, borderColor: '#2e8059', backgroundColor: 'rgba(46,128,89,.10)', fill: true, tension: .25, pointRadius: 3, borderWidth: 2 },
@@ -653,6 +736,14 @@ function showTab(tab) {
   document.getElementById('save-status').textContent = 'Your information is stored only in this browser.';
 }
 
+function updateSpouseAgeField() {
+  const partnered = ['Married', 'Partnered'].includes(document.getElementById('marital-status').value);
+  const field = document.getElementById('spouse-age-field');
+  const input = document.getElementById('spouse-age');
+  field.hidden = !partnered;
+  input.required = partnered;
+}
+
 function validateTab(panel) {
   const invalid = [...panel.querySelectorAll('input, select')].find(input => !input.disabled && !input.checkValidity());
   if (invalid) { invalid.reportValidity(); invalid.focus(); return false; }
@@ -673,7 +764,7 @@ function saveUserData(event) {
 
 function populateForm(data) {
   if (!data) return;
-  for (const [key, id] of Object.entries({ age: 'age', maritalStatus: 'marital-status', inflation: 'inflation', retirementAge: 'retirement-age', retirementExpenses: 'retirement-expenses', retirementEndAge: 'retirement-end-age', salary: 'income', expenses: 'expenses', rsuAnnual: 'rsu-income' })) {
+  for (const [key, id] of Object.entries({ age: 'age', maritalStatus: 'marital-status', spouseAge: 'spouse-age', inflation: 'inflation', retirementAge: 'retirement-age', retirementReduction: 'retirement-reduction', retirementEndAge: 'retirement-end-age', salary: 'income', expenses: 'expenses', rsuAnnual: 'rsu-income' })) {
     if (data[key] !== undefined && data[key] !== '') document.getElementById(id).value = data[key];
   }
   data.dependents.forEach(dependent => makeDependent(dependent));
@@ -689,6 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const data = loadUserData();
   buildInvestmentTable(data?.investments || {});
   populateForm(data);
+  updateSpouseAgeField();
   renderDashboard(data);
   document.getElementById('tab-personal').addEventListener('click', () => showTab('personal'));
   document.getElementById('tab-income').addEventListener('click', () => {
@@ -699,6 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.querySelector('.back-tab').addEventListener('click', () => showTab('personal'));
   document.getElementById('add-dependent').addEventListener('click', () => makeDependent());
+  document.getElementById('marital-status').addEventListener('change', updateSpouseAgeField);
   document.getElementById('add-loan').addEventListener('click', () => makeLoanCard());
   document.getElementById('apply-historical-references').addEventListener('click', () => {
     for (const category of INVESTMENTS.filter(item => item.historicalAverage !== undefined)) {

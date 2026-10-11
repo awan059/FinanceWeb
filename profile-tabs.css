@@ -83,5 +83,19 @@
 .assumption-note a{color:#286e4d}
 .blend-return{min-height:24px;color:#758076;font-size:9px;line-height:1.6;margin:9px 0 0}
 .horizon-badge{border-radius:20px;padding:6px 9px;background:#f0f5f0;color:#55735e;font-size:9px;white-space:nowrap}
+.projection-table-wrap{max-width:100%;overflow-x:auto;margin-top:12px;border:1px solid #e9ebe6;border-radius:8px}
+.projection-table{width:100%;min-width:710px;border-collapse:collapse;background:#fff;font-size:9px}
+.projection-table caption{text-align:left;padding:9px 10px;background:#f8faf7;color:#626c62;font-weight:600}
+.projection-table th,.projection-table td{padding:8px 9px;border-bottom:1px solid #f0f1ee;text-align:right;white-space:nowrap}
+.projection-table thead th{background:#f8faf7;color:#747b73;font-weight:600}
+.projection-table thead th:first-child,.projection-table tbody th{text-align:left}
+.projection-table tbody th{color:#4e574e;font-weight:600}
+.projection-table tbody tr:last-child th,.projection-table tbody tr:last-child td{border-bottom:0}
+.cashflow-charts{margin-top:20px;padding-top:16px;border-top:1px solid #eceee9}
+.cashflow-charts h3{font:600 11px Manrope,sans-serif;color:#525b51;margin:0 0 8px}
+.cashflow-charts h3:not(:first-child){margin-top:16px}
+.cashflow-chart-wrap{height:175px;position:relative}
+.cashflow-chart-wrap.doughnut-wrap{height:205px}
+@media(max-width:760px){.projection-table{min-width:680px}.cashflow-chart-wrap{height:190px}}
 @media(max-width:760px){.dependent-card{grid-template-columns:repeat(2,minmax(0,1fr))}.dependent-expense-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.education-metrics,.retirement-metrics,.settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tab-actions{align-items:flex-start;flex-wrap:wrap}.tab-actions>.form-actions{width:100%;flex-basis:100%;justify-content:space-between}.profile-tab{padding:10px 8px;font-size:10px}}
 @media(max-width:420px){.dependent-card{grid-template-columns:1fr}.dependent-expense-grid{grid-template-columns:1fr}.dependent-education-heading{align-items:flex-start;flex-direction:column;gap:3px}.education-metrics,.retirement-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.education-summary-heading{align-items:flex-start;flex-direction:column}.profile-tabs{gap:0}.profile-tab{flex:1}}
